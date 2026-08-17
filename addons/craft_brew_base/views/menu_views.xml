@@ -1,0 +1,54 @@
+<odoo>
+    <menuitem id="menu_brew_tank_status"
+              name="发酵罐状态"
+              parent="craft_brew_core.menu_craft_brew_factory"
+              action="action_brew_tank"
+              sequence="10"/>
+
+    <menuitem id="menu_brew_base_settings"
+              name="基础资料"
+              parent="craft_brew_core.menu_craft_brew_settings"
+              sequence="10"/>
+
+    <menuitem id="menu_brew_factory"
+              name="厂区管理"
+              parent="menu_brew_base_settings"
+              action="action_brew_factory"
+              sequence="10"/>
+
+    <menuitem id="menu_brew_warehouse"
+              name="仓库管理"
+              parent="menu_brew_base_settings"
+              action="action_brew_warehouse"
+              sequence="20"/>
+
+    <menuitem id="menu_brew_equipment"
+              name="设备管理"
+              parent="menu_brew_base_settings"
+              action="action_brew_equipment"
+              sequence="30"/>
+
+    <menuitem id="menu_brew_tank"
+              name="发酵罐管理"
+              parent="menu_brew_base_settings"
+              action="action_brew_tank"
+              sequence="40"/>
+
+    <menuitem id="menu_brew_material"
+              name="原料管理"
+              parent="menu_brew_base_settings"
+              action="action_brew_material"
+              sequence="50"/>
+
+    <menuitem id="menu_brew_supplier"
+              name="供应商管理"
+              parent="menu_brew_base_settings"
+              action="action_brew_supplier"
+              sequence="60"/>
+
+    <menuitem id="menu_brew_customer"
+              name="客户管理"
+              parent="menu_brew_base_settings"
+              action="action_brew_customer"
+              sequence="70"/>
+</odoo>

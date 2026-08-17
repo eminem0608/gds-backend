@@ -1,0 +1,57 @@
+<odoo>
+    <record id="view_brew_material_tree" model="ir.ui.view">
+        <field name="name">brew.material.tree</field>
+        <field name="model">brew.material</field>
+        <field name="arch" type="xml">
+            <tree>
+                <field name="name"/>
+                <field name="category"/>
+                <field name="brand"/>
+                <field name="supplier_id"/>
+                <field name="specification"/>
+                <field name="uom"/>
+                <field name="price"/>
+                <field name="shelf_life_days"/>
+                <field name="active"/>
+            </tree>
+        </field>
+    </record>
+
+    <record id="view_brew_material_form" model="ir.ui.view">
+        <field name="name">brew.material.form</field>
+        <field name="model">brew.material</field>
+        <field name="arch" type="xml">
+            <form>
+                <sheet>
+                    <group>
+                        <group>
+                            <field name="name"/>
+                            <field name="category"/>
+                            <field name="brand"/>
+                            <field name="supplier_id"/>
+                            <field name="specification"/>
+                            <field name="uom"/>
+                            <field name="price"/>
+                        </group>
+                        <group>
+                            <field name="shelf_life_days"/>
+                            <field name="extract_rate"/>
+                            <field name="color_ebc"/>
+                            <field name="alpha_acid"/>
+                            <field name="active"/>
+                        </group>
+                    </group>
+                    <group>
+                        <field name="flavor_desc"/>
+                    </group>
+                </sheet>
+            </form>
+        </field>
+    </record>
+
+    <record id="action_brew_material" model="ir.actions.act_window">
+        <field name="name">原料管理</field>
+        <field name="res_model">brew.material</field>
+        <field name="view_mode">tree,form</field>
+    </record>
+</odoo>

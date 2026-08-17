@@ -1,0 +1,29 @@
+services:
+  db:
+    image: postgres:15
+    container_name: craft_brew_db
+    environment:
+      POSTGRES_DB: postgres
+      POSTGRES_USER: odoo
+      POSTGRES_PASSWORD: odoo
+    volumes:
+      - craft_brew_db_data:/var/lib/postgresql/data
+    ports:
+      - "5432:5432"
+
+  odoo:
+    image: odoo:17
+    container_name: craft_brew_odoo
+    depends_on:
+      - db
+    ports:
+      - "8069:8069"
+    volumes:
+      - ./addons:/mnt/extra-addons
+      - ./config/odoo.conf:/etc/odoo/odoo.conf
+      - craft_brew_odoo_data:/var/lib/odoo
+    command: odoo -c /etc/odoo/odoo.conf --dev=all
+
+volumes:
+  craft_brew_db_data:
+  craft_brew_odoo_data:

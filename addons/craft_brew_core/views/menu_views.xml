@@ -1,0 +1,13 @@
+<odoo>
+    <menuitem id="menu_craft_brew_root" name="精酿啤酒 SaaS" sequence="10"/>
+
+    <menuitem id="menu_craft_brew_dashboard" name="总数据看板" parent="menu_craft_brew_root" sequence="10"/>
+    <menuitem id="menu_craft_brew_factory" name="酒厂" parent="menu_craft_brew_root" sequence="20"/>
+    <menuitem id="menu_craft_brew_recipe" name="配方工艺" parent="menu_craft_brew_root" sequence="30"/>
+    <menuitem id="menu_craft_brew_production" name="生产管理" parent="menu_craft_brew_root" sequence="40"/>
+    <menuitem id="menu_craft_brew_inventory" name="库存采购" parent="menu_craft_brew_root" sequence="50"/>
+    <menuitem id="menu_craft_brew_traceability" name="物流追溯" parent="menu_craft_brew_root" sequence="60"/>
+    <menuitem id="menu_craft_brew_reports" name="报表分析" parent="menu_craft_brew_root" sequence="70"/>
+    <menuitem id="menu_craft_brew_settings" name="系统设置" parent="menu_craft_brew_root" sequence="80"/>
+    <menuitem id="menu_craft_brew_tasks" name="我的任务" parent="menu_craft_brew_root" sequence="90"/>
+</odoo>

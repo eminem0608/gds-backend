@@ -1,0 +1,41 @@
+<odoo>
+    <record id="view_brew_equipment_tree" model="ir.ui.view">
+        <field name="name">brew.equipment.tree</field>
+        <field name="model">brew.equipment</field>
+        <field name="arch" type="xml">
+            <tree>
+                <field name="name"/>
+                <field name="factory_id"/>
+                <field name="equipment_type"/>
+                <field name="capacity_l"/>
+                <field name="status"/>
+                <field name="active"/>
+            </tree>
+        </field>
+    </record>
+
+    <record id="view_brew_equipment_form" model="ir.ui.view">
+        <field name="name">brew.equipment.form</field>
+        <field name="model">brew.equipment</field>
+        <field name="arch" type="xml">
+            <form>
+                <sheet>
+                    <group>
+                        <field name="name"/>
+                        <field name="factory_id"/>
+                        <field name="equipment_type"/>
+                        <field name="capacity_l"/>
+                        <field name="status"/>
+                        <field name="active"/>
+                    </group>
+                </sheet>
+            </form>
+        </field>
+    </record>
+
+    <record id="action_brew_equipment" model="ir.actions.act_window">
+        <field name="name">设备管理</field>
+        <field name="res_model">brew.equipment</field>
+        <field name="view_mode">tree,form</field>
+    </record>
+</odoo>

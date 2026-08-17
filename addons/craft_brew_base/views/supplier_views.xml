@@ -1,0 +1,41 @@
+<odoo>
+    <record id="view_brew_supplier_tree" model="ir.ui.view">
+        <field name="name">brew.supplier.tree</field>
+        <field name="model">brew.supplier</field>
+        <field name="arch" type="xml">
+            <tree>
+                <field name="name"/>
+                <field name="contact_name"/>
+                <field name="phone"/>
+                <field name="supply_category"/>
+                <field name="active"/>
+            </tree>
+        </field>
+    </record>
+
+    <record id="view_brew_supplier_form" model="ir.ui.view">
+        <field name="name">brew.supplier.form</field>
+        <field name="model">brew.supplier</field>
+        <field name="arch" type="xml">
+            <form>
+                <sheet>
+                    <group>
+                        <field name="name"/>
+                        <field name="contact_name"/>
+                        <field name="phone"/>
+                        <field name="address"/>
+                        <field name="bank_account"/>
+                        <field name="supply_category"/>
+                        <field name="active"/>
+                    </group>
+                </sheet>
+            </form>
+        </field>
+    </record>
+
+    <record id="action_brew_supplier" model="ir.actions.act_window">
+        <field name="name">供应商管理</field>
+        <field name="res_model">brew.supplier</field>
+        <field name="view_mode">tree,form</field>
+    </record>
+</odoo>

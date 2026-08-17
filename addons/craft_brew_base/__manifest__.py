@@ -1,0 +1,22 @@
+{
+    "name": "Craft Brew Base",
+    "summary": "Base master data for craft beer SaaS.",
+    "version": "17.0.1.0.0",
+    "category": "Manufacturing",
+    "author": "Craft Brew",
+    "license": "LGPL-3",
+    "depends": ["craft_brew_core"],
+    "data": [
+        "security/ir.model.access.csv",
+        "views/factory_views.xml",
+        "views/warehouse_views.xml",
+        "views/equipment_views.xml",
+        "views/tank_views.xml",
+        "views/supplier_views.xml",
+        "views/customer_views.xml",
+        "views/material_views.xml",
+        "views/menu_views.xml",
+    ],
+    "application": False,
+    "installable": True,
+}

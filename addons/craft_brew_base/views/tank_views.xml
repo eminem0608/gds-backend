@@ -1,0 +1,61 @@
+<odoo>
+    <record id="view_brew_tank_tree" model="ir.ui.view">
+        <field name="name">brew.tank.tree</field>
+        <field name="model">brew.tank</field>
+        <field name="arch" type="xml">
+            <tree decoration-danger="status == 'abnormal'" decoration-success="status == 'empty'">
+                <field name="name"/>
+                <field name="factory_id"/>
+                <field name="tank_type"/>
+                <field name="capacity_l"/>
+                <field name="current_product"/>
+                <field name="current_batch_no"/>
+                <field name="current_volume_l"/>
+                <field name="current_temperature"/>
+                <field name="current_pressure"/>
+                <field name="current_gravity"/>
+                <field name="status"/>
+                <field name="cleaning_status"/>
+            </tree>
+        </field>
+    </record>
+
+    <record id="view_brew_tank_form" model="ir.ui.view">
+        <field name="name">brew.tank.form</field>
+        <field name="model">brew.tank</field>
+        <field name="arch" type="xml">
+            <form>
+                <sheet>
+                    <group>
+                        <group>
+                            <field name="name"/>
+                            <field name="factory_id"/>
+                            <field name="equipment_id"/>
+                            <field name="tank_type"/>
+                            <field name="capacity_l"/>
+                        </group>
+                        <group>
+                            <field name="status"/>
+                            <field name="cleaning_status"/>
+                            <field name="active"/>
+                        </group>
+                    </group>
+                    <group string="当前批次状态">
+                        <field name="current_product"/>
+                        <field name="current_batch_no"/>
+                        <field name="current_volume_l"/>
+                        <field name="current_temperature"/>
+                        <field name="current_pressure"/>
+                        <field name="current_gravity"/>
+                    </group>
+                </sheet>
+            </form>
+        </field>
+    </record>
+
+    <record id="action_brew_tank" model="ir.actions.act_window">
+        <field name="name">发酵罐状态</field>
+        <field name="res_model">brew.tank</field>
+        <field name="view_mode">tree,form</field>
+    </record>
+</odoo>
