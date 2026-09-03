@@ -9,6 +9,7 @@
     "data": [
         "security/security.xml",
         "views/menu_views.xml",
+        "views/account_views.xml",
     ],
     "application": True,
     "installable": True,

@@ -1,0 +1,16 @@
+<odoo>
+    <record id="action_brew_accounts" model="ir.actions.act_window">
+        <field name="name">账号与角色</field>
+        <field name="res_model">res.users</field>
+        <field name="view_mode">tree,form</field>
+        <field name="context">{'create': True}</field>
+    </record>
+
+    <menuitem
+        id="menu_craft_brew_accounts"
+        name="账号与角色"
+        parent="menu_craft_brew_settings"
+        action="action_brew_accounts"
+        groups="craft_brew_core.group_brew_admin"
+        sequence="10"/>
+</odoo>
