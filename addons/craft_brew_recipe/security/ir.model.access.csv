@@ -1,0 +1,13 @@
+id,name,model_id:id,group_id:id,perm_read,perm_write,perm_create,perm_unlink
+access_brew_recipe_user,brew.recipe user,model_brew_recipe,base.group_user,1,0,0,0
+access_brew_recipe_director,brew.recipe director,model_brew_recipe,craft_brew_core.group_brew_production_director,1,1,1,0
+access_brew_recipe_admin,brew.recipe admin,model_brew_recipe,craft_brew_core.group_brew_admin,1,1,1,0
+access_brew_recipe_version_user,brew.recipe.version user,model_brew_recipe_version,base.group_user,1,0,0,0
+access_brew_recipe_version_director,brew.recipe.version director,model_brew_recipe_version,craft_brew_core.group_brew_production_director,1,1,1,0
+access_brew_recipe_version_admin,brew.recipe.version admin,model_brew_recipe_version,craft_brew_core.group_brew_admin,1,1,1,0
+access_brew_recipe_material_user,brew.recipe.material user,model_brew_recipe_material,base.group_user,1,0,0,0
+access_brew_recipe_material_director,brew.recipe.material director,model_brew_recipe_material,craft_brew_core.group_brew_production_director,1,1,1,1
+access_brew_recipe_material_admin,brew.recipe.material admin,model_brew_recipe_material,craft_brew_core.group_brew_admin,1,1,1,1
+access_brew_recipe_step_user,brew.recipe.process.step user,model_brew_recipe_process_step,base.group_user,1,0,0,0
+access_brew_recipe_step_director,brew.recipe.process.step director,model_brew_recipe_process_step,craft_brew_core.group_brew_production_director,1,1,1,1
+access_brew_recipe_step_admin,brew.recipe.process.step admin,model_brew_recipe_process_step,craft_brew_core.group_brew_admin,1,1,1,1

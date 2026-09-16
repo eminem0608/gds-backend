@@ -1,0 +1,5 @@
+id,name,model_id:id,group_id:id,perm_read,perm_write,perm_create,perm_unlink
+access_brew_production_plan_user,brew.production.plan user,model_brew_production_plan,base.group_user,1,0,0,0
+access_brew_production_plan_director,brew.production.plan director,model_brew_production_plan,craft_brew_core.group_brew_production_director,1,1,1,0
+access_brew_production_plan_manager,brew.production.plan manager,model_brew_production_plan,craft_brew_core.group_brew_general_manager,1,1,0,0
+access_brew_production_plan_admin,brew.production.plan admin,model_brew_production_plan,craft_brew_core.group_brew_admin,1,1,1,0

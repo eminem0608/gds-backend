@@ -1,0 +1,158 @@
+import json
+
+from odoo import api, fields, models
+from odoo.exceptions import ValidationError
+
+
+class BrewProductionPlan(models.Model):
+    _name = "brew.production.plan"
+    _description = "Craft Brew Production Plan"
+    _order = "planned_start, id"
+    _check_company_auto = True
+
+    name = fields.Char(required=True, default="New", copy=False, index=True)
+    company_id = fields.Many2one("res.company", required=True, default=lambda self: self.env.company, index=True)
+    factory_id = fields.Many2one("brew.factory", required=True, check_company=True, index=True)
+    demand_id = fields.Many2one("brew.product.demand", check_company=True, index=True)
+    product_tmpl_id = fields.Many2one("product.template", required=True, check_company=True, index=True)
+    recipe_version_id = fields.Many2one("brew.recipe.version", required=True, check_company=True, index=True)
+    planned_volume_l = fields.Float(required=True)
+    planned_start = fields.Datetime(required=True, index=True)
+    planned_end = fields.Datetime(required=True, index=True)
+    equipment_id = fields.Many2one("maintenance.equipment", required=True, check_company=True, index=True)
+    tank_id = fields.Many2one("brew.tank", required=True, check_company=True, index=True)
+    owner_id = fields.Many2one("res.users", check_company=True, index=True)
+    state = fields.Selection(
+        [("draft", "草稿"), ("checked", "已校验"), ("pending_approval", "待审批"), ("approved", "已批准"), ("dispatched", "已下发"), ("in_progress", "执行中"), ("done", "已完成"), ("cancelled", "已取消"), ("terminated", "已终止")],
+        required=True, default="draft", index=True,
+    )
+    recipe_snapshot_json = fields.Text(default="{}", readonly=True)
+    material_snapshot_json = fields.Text(default="[]", readonly=True)
+    resource_check_json = fields.Text(default="{}", readonly=True)
+    approval_instance_id = fields.Many2one("brew.approval.instance", check_company=True)
+    dispatched_at = fields.Datetime()
+    cancel_reason = fields.Text()
+
+    _sql_constraints = [
+        ("company_name_unique", "unique(company_id, name)", "生产计划号必须唯一。"),
+        ("volume_positive", "check(planned_volume_l > 0)", "计划体积必须大于零。"),
+        ("time_order", "check(planned_end > planned_start)", "计划结束时间必须晚于开始时间。"),
+    ]
+
+    _editable_fields = {"factory_id", "demand_id", "product_tmpl_id", "recipe_version_id", "planned_volume_l", "planned_start", "planned_end", "equipment_id", "tank_id", "owner_id"}
+
+    @api.model_create_multi
+    def create(self, values_list):
+        for values in values_list:
+            if values.get("name", "New") == "New":
+                values["name"] = self.env["ir.sequence"].next_by_code("brew.production.plan") or "New"
+        return super().create(values_list)
+
+    def write(self, values):
+        if not self.env.context.get("brew_state_transition") and self._editable_fields.intersection(values):
+            if any(plan.state not in {"draft", "checked"} for plan in self):
+                raise ValidationError("只有草稿或已校验计划可以修改。")
+            if self._editable_fields.intersection(values):
+                values = {**values, "state": "draft", "resource_check_json": "{}"}
+        return super().write(values)
+
+    @api.constrains("factory_id", "equipment_id", "tank_id", "recipe_version_id", "product_tmpl_id", "planned_volume_l")
+    def _check_relations(self):
+        for plan in self:
+            if plan.equipment_id.brew_factory_id != plan.factory_id or plan.tank_id.factory_id != plan.factory_id:
+                raise ValidationError("设备和罐体必须属于计划厂区。")
+            if plan.tank_id.capacity_l < plan.planned_volume_l:
+                raise ValidationError("计划体积不能超过目标罐容量。")
+            if plan.recipe_version_id.state != "active":
+                raise ValidationError("生产计划只能引用使用中的配方版本。")
+            if plan.recipe_version_id.recipe_id.product_tmpl_id != plan.product_tmpl_id:
+                raise ValidationError("配方版本与计划产品不一致。")
+
+    def check_resources(self):
+        self.ensure_one()
+        conflicts = []
+        plan_domain = [
+            ("id", "!=", self.id),
+            ("state", "not in", ["cancelled", "terminated", "done"]),
+            ("planned_start", "<", self.planned_end),
+            ("planned_end", ">", self.planned_start),
+        ]
+        for other in self.search(plan_domain + ["|", ("equipment_id", "=", self.equipment_id.id), ("tank_id", "=", self.tank_id.id)]):
+            conflicts.append({"type": "production_plan", "id": str(other.id), "name": other.name})
+        unavailable = self.env["brew.equipment.unavailability"].search(
+            [("equipment_id", "=", self.equipment_id.id), ("state", "=", "active"), ("start_at", "<", self.planned_end), ("end_at", ">", self.planned_start)]
+        )
+        for period in unavailable:
+            conflicts.append({"type": "equipment_unavailability", "id": str(period.id), "name": period.name})
+        result = {"ok": not conflicts, "conflicts": conflicts, "checked_at": fields.Datetime.now().isoformat()}
+        self.with_context(brew_state_transition=True).write({"resource_check_json": json.dumps(result, ensure_ascii=False), "state": "checked" if not conflicts else "draft"})
+        return result
+
+    def expand_materials(self):
+        self.ensure_one()
+        calculation = self.recipe_version_id.calculate(self.planned_volume_l)
+        recipe_snapshot = {
+            "recipe_id": self.recipe_version_id.recipe_id.id,
+            "recipe_code": self.recipe_version_id.recipe_id.code,
+            "version_id": self.recipe_version_id.id,
+            "version": self.recipe_version_id.version,
+            "base_volume_l": self.recipe_version_id.base_volume_l,
+            "process_steps": [
+                {"sequence": step.sequence, "name": step.name, "phase": step.phase, "action_type": step.action_type, "mandatory_confirmation": step.mandatory_confirmation, "config": json.loads(step.config_json or "{}")}
+                for step in self.recipe_version_id.process_step_ids.sorted("sequence")
+            ],
+        }
+        self.with_context(brew_state_transition=True).write(
+            {"recipe_snapshot_json": json.dumps(recipe_snapshot, ensure_ascii=False), "material_snapshot_json": json.dumps(calculation, ensure_ascii=False)}
+        )
+        return calculation
+
+    def action_submit(self, user):
+        self.ensure_one()
+        if self.state != "checked" or not json.loads(self.resource_check_json or "{}").get("ok"):
+            raise ValidationError("计划必须先通过资源冲突校验。")
+        if not self.material_snapshot_json or self.material_snapshot_json == "[]":
+            self.expand_materials()
+        approval = self.env["brew.approval.instance"].create_for_target(
+            "production_plan", self, user, self.factory_id, {"quantity": self.planned_volume_l, "amount": json.loads(self.material_snapshot_json).get("estimated_cost", 0)}
+        )
+        self.with_context(brew_state_transition=True).write({"state": "pending_approval", "approval_instance_id": approval.id})
+        return approval
+
+    def action_approve(self):
+        self.ensure_one()
+        if self.state != "pending_approval" or self.approval_instance_id.state != "approved":
+            raise ValidationError("审批实例尚未全部通过。")
+        self.with_context(brew_state_transition=True).write({"state": "approved"})
+        return True
+
+    def action_dispatch(self):
+        self.ensure_one()
+        if self.state != "approved":
+            raise ValidationError("只有已批准计划可以下发。")
+        tasks = [
+            {"name": f"{self.name} 生产执行", "task_type": "production", "role_code": "operator", "assignee_id": self.owner_id.id or False},
+            {"name": f"{self.name} 备料", "task_type": "material_preparation", "role_code": "warehouse_keeper"},
+        ]
+        for values in tasks:
+            self.env["brew.task"].create({**values, "company_id": self.company_id.id, "factory_id": self.factory_id.id, "target_model": self._name, "target_id": self.id, "due_at": self.planned_start})
+        self.with_context(brew_state_transition=True).write({"state": "dispatched", "dispatched_at": fields.Datetime.now()})
+        if self.demand_id:
+            self.demand_id.action_mark_planned()
+        return True
+
+    def action_cancel(self, reason):
+        self.ensure_one()
+        if self.state in {"in_progress", "done", "cancelled", "terminated"} or not str(reason or "").strip():
+            raise ValidationError("当前计划不能取消，或未填写原因。")
+        self.env["brew.task"].search([("target_model", "=", self._name), ("target_id", "=", self.id), ("state", "not in", ["done", "cancelled"])]).write({"state": "cancelled"})
+        self.with_context(brew_state_transition=True).write({"state": "cancelled", "cancel_reason": reason})
+        return True
+
+    def action_terminate(self, reason):
+        self.ensure_one()
+        if self.state not in {"dispatched", "in_progress"} or not str(reason or "").strip():
+            raise ValidationError("只有已下发或执行中计划可以终止，且必须填写原因。")
+        self.env["brew.task"].search([("target_model", "=", self._name), ("target_id", "=", self.id), ("state", "not in", ["done", "cancelled"])]).write({"state": "cancelled"})
+        self.with_context(brew_state_transition=True).write({"state": "terminated", "cancel_reason": reason})
+        return True

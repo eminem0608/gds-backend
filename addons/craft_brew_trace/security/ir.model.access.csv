@@ -1,0 +1,15 @@
+id,name,model_id:id,group_id:id,perm_read,perm_write,perm_create,perm_unlink
+access_brew_packaging_order_user,brew.packaging.order user,model_brew_packaging_order,base.group_user,1,0,0,0
+access_brew_packaging_order_operator,brew.packaging.order operator,model_brew_packaging_order,craft_brew_core.group_brew_operator,1,1,1,0
+access_brew_packaging_order_director,brew.packaging.order director,model_brew_packaging_order,craft_brew_core.group_brew_production_director,1,1,1,0
+access_brew_packaging_material_user,brew.packaging.material.line user,model_brew_packaging_material_line,base.group_user,1,0,0,0
+access_brew_packaging_material_operator,brew.packaging.material.line operator,model_brew_packaging_material_line,craft_brew_core.group_brew_operator,1,1,1,1
+access_brew_trace_code_user,brew.trace.code user,model_brew_trace_code,base.group_user,1,0,0,0
+access_brew_trace_code_operator,brew.trace.code operator,model_brew_trace_code,craft_brew_core.group_brew_operator,1,1,1,0
+access_brew_trace_code_warehouse,brew.trace.code warehouse,model_brew_trace_code,craft_brew_core.group_brew_warehouse,1,1,1,0
+access_brew_outbound_order_user,brew.outbound.order user,model_brew_outbound_order,base.group_user,1,0,0,0
+access_brew_outbound_order_sales,brew.outbound.order sales,model_brew_outbound_order,craft_brew_core.group_brew_sales,1,1,1,0
+access_brew_outbound_order_warehouse,brew.outbound.order warehouse,model_brew_outbound_order,craft_brew_core.group_brew_warehouse,1,1,1,0
+access_brew_outbound_line_user,brew.outbound.order.line user,model_brew_outbound_order_line,base.group_user,1,0,0,0
+access_brew_outbound_line_sales,brew.outbound.order.line sales,model_brew_outbound_order_line,craft_brew_core.group_brew_sales,1,1,1,1
+access_brew_outbound_line_warehouse,brew.outbound.order.line warehouse,model_brew_outbound_order_line,craft_brew_core.group_brew_warehouse,1,1,1,1

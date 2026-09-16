@@ -1,0 +1,8 @@
+<odoo>
+    <record id="view_brew_export_job_tree" model="ir.ui.view"><field name="name">brew.export.job.tree</field><field name="model">brew.export.job</field><field name="arch" type="xml"><tree><field name="name"/><field name="export_type"/><field name="factory_id"/><field name="requested_by_id"/><field name="state"/><field name="row_count"/><field name="completed_at"/></tree></field></record>
+    <record id="action_brew_export_job" model="ir.actions.act_window"><field name="name">Export Jobs</field><field name="res_model">brew.export.job</field><field name="view_mode">tree,form</field></record>
+    <record id="view_brew_notification_tree" model="ir.ui.view"><field name="name">brew.notification.tree</field><field name="model">brew.notification</field><field name="arch" type="xml"><tree><field name="create_date"/><field name="user_id"/><field name="notification_type"/><field name="title"/><field name="read_at"/></tree></field></record>
+    <record id="action_brew_notification" model="ir.actions.act_window"><field name="name">Notifications</field><field name="res_model">brew.notification</field><field name="view_mode">tree,form</field></record>
+    <menuitem id="menu_brew_export_job" name="Export Jobs" parent="craft_brew_core.menu_craft_brew_reports" action="action_brew_export_job" sequence="80"/>
+    <menuitem id="menu_brew_notification" name="Notifications" parent="craft_brew_core.menu_craft_brew_root" action="action_brew_notification" sequence="90"/>
+</odoo>

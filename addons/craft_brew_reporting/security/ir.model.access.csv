@@ -1,0 +1,7 @@
+id,name,model_id:id,group_id:id,perm_read,perm_write,perm_create,perm_unlink
+access_brew_export_job_user,brew.export.job user,model_brew_export_job,base.group_user,1,0,0,0
+access_brew_export_job_finance,brew.export.job finance,model_brew_export_job,craft_brew_core.group_brew_finance,1,1,1,0
+access_brew_export_job_admin,brew.export.job admin,model_brew_export_job,craft_brew_core.group_brew_admin,1,1,1,0
+access_brew_notification_preference_user,brew.notification.preference user,model_brew_notification_preference,base.group_user,1,1,1,0
+access_brew_notification_user,brew.notification user,model_brew_notification,base.group_user,1,1,0,0
+access_brew_notification_admin,brew.notification admin,model_brew_notification,craft_brew_core.group_brew_admin,1,1,1,0

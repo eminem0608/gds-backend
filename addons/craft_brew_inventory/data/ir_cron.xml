@@ -1,0 +1,11 @@
+<odoo noupdate="1">
+    <record id="ir_cron_release_expired_inventory_reservations" model="ir.cron">
+        <field name="name">释放过期库存预占</field>
+        <field name="model_id" ref="model_brew_inventory_reservation"/>
+        <field name="state">code</field>
+        <field name="code">model.release_expired()</field>
+        <field name="interval_number">15</field>
+        <field name="interval_type">minutes</field>
+        <field name="active" eval="True"/>
+    </record>
+</odoo>

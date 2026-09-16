@@ -1,0 +1,50 @@
+<odoo>
+    <record id="view_brew_recipe_tree" model="ir.ui.view">
+        <field name="name">brew.recipe.tree</field>
+        <field name="model">brew.recipe</field>
+        <field name="arch" type="xml">
+            <tree>
+                <field name="code"/>
+                <field name="name"/>
+                <field name="product_tmpl_id"/>
+                <field name="beer_style"/>
+                <field name="active_version_id"/>
+                <field name="active"/>
+            </tree>
+        </field>
+    </record>
+    <record id="view_brew_recipe_form" model="ir.ui.view">
+        <field name="name">brew.recipe.form</field>
+        <field name="model">brew.recipe</field>
+        <field name="arch" type="xml">
+            <form>
+                <sheet>
+                    <group>
+                        <field name="code"/>
+                        <field name="name"/>
+                        <field name="company_id"/>
+                        <field name="product_tmpl_id"/>
+                        <field name="beer_style"/>
+                        <field name="active"/>
+                    </group>
+                    <field name="description"/>
+                    <field name="version_ids" readonly="1">
+                        <tree>
+                            <field name="version"/>
+                            <field name="state"/>
+                            <field name="base_volume_l"/>
+                            <field name="estimated_cost"/>
+                            <field name="approved_at"/>
+                        </tree>
+                    </field>
+                </sheet>
+            </form>
+        </field>
+    </record>
+    <record id="action_brew_recipe" model="ir.actions.act_window">
+        <field name="name">配方工艺</field>
+        <field name="res_model">brew.recipe</field>
+        <field name="view_mode">tree,form</field>
+    </record>
+    <menuitem id="menu_brew_recipe_manage" name="配方工艺" parent="craft_brew_core.menu_craft_brew_recipe" action="action_brew_recipe" sequence="10"/>
+</odoo>

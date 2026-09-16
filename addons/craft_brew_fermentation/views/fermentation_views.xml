@@ -1,0 +1,5 @@
+<odoo>
+    <record id="view_brew_fermentation_session_tree" model="ir.ui.view"><field name="name">brew.fermentation.session.tree</field><field name="model">brew.fermentation.session</field><field name="arch" type="xml"><tree><field name="name"/><field name="batch_id"/><field name="tank_id"/><field name="state"/><field name="started_at"/></tree></field></record>
+    <record id="action_brew_fermentation_session" model="ir.actions.act_window"><field name="name">发酵会话</field><field name="res_model">brew.fermentation.session</field><field name="view_mode">tree,form</field></record>
+    <menuitem id="menu_brew_fermentation_session" name="发酵会话" parent="craft_brew_core.menu_craft_brew_production" action="action_brew_fermentation_session" sequence="40"/>
+</odoo>

@@ -8,6 +8,9 @@
     "depends": ["base"],
     "data": [
         "security/security.xml",
+        "security/ir.model.access.csv",
+        "security/record_rules.xml",
+        "data/ir_cron.xml",
         "views/menu_views.xml",
         "views/account_views.xml",
     ],

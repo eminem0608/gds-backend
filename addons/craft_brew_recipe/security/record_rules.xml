@@ -1,0 +1,26 @@
+<odoo>
+    <record id="rule_brew_recipe_company" model="ir.rule">
+        <field name="name">配方：企业范围</field>
+        <field name="model_id" ref="model_brew_recipe"/>
+        <field name="domain_force">[('company_id', 'in', company_ids)]</field>
+        <field name="groups" eval="[(4, ref('base.group_user'))]"/>
+    </record>
+    <record id="rule_brew_recipe_version_company" model="ir.rule">
+        <field name="name">配方版本：企业范围</field>
+        <field name="model_id" ref="model_brew_recipe_version"/>
+        <field name="domain_force">[('company_id', 'in', company_ids)]</field>
+        <field name="groups" eval="[(4, ref('base.group_user'))]"/>
+    </record>
+    <record id="rule_brew_recipe_material_company" model="ir.rule">
+        <field name="name">配方原料：企业范围</field>
+        <field name="model_id" ref="model_brew_recipe_material"/>
+        <field name="domain_force">[('company_id', 'in', company_ids)]</field>
+        <field name="groups" eval="[(4, ref('base.group_user'))]"/>
+    </record>
+    <record id="rule_brew_recipe_step_company" model="ir.rule">
+        <field name="name">工艺节点：企业范围</field>
+        <field name="model_id" ref="model_brew_recipe_process_step"/>
+        <field name="domain_force">[('company_id', 'in', company_ids)]</field>
+        <field name="groups" eval="[(4, ref('base.group_user'))]"/>
+    </record>
+</odoo>

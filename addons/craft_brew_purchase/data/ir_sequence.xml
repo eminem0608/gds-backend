@@ -1,0 +1,26 @@
+<odoo noupdate="1">
+    <record id="seq_brew_purchase_requisition" model="ir.sequence">
+        <field name="name">采购需求</field>
+        <field name="code">brew.purchase.requisition</field>
+        <field name="prefix">PR-%(y)s%(month)s%(day)s-</field>
+        <field name="padding">4</field>
+    </record>
+    <record id="seq_brew_supplier_shipment" model="ir.sequence">
+        <field name="name">供应商发货</field>
+        <field name="code">brew.supplier.shipment</field>
+        <field name="prefix">SHP-%(y)s%(month)s%(day)s-</field>
+        <field name="padding">4</field>
+    </record>
+    <record id="seq_brew_receipt" model="ir.sequence">
+        <field name="name">采购收货</field>
+        <field name="code">brew.receipt</field>
+        <field name="prefix">REC-%(y)s%(month)s%(day)s-</field>
+        <field name="padding">4</field>
+    </record>
+    <record id="seq_brew_quality_inspection" model="ir.sequence">
+        <field name="name">来料质检</field>
+        <field name="code">brew.quality.inspection</field>
+        <field name="prefix">QC-%(y)s%(month)s%(day)s-</field>
+        <field name="padding">4</field>
+    </record>
+</odoo>

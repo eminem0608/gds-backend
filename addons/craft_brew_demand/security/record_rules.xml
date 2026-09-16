@@ -1,0 +1,8 @@
+<odoo>
+    <record id="rule_brew_product_demand_scope" model="ir.rule">
+        <field name="name">产品需求：企业与本人范围</field>
+        <field name="model_id" ref="model_brew_product_demand"/>
+        <field name="domain_force">[('company_id', 'in', company_ids)] if user.has_group('craft_brew_core.group_brew_admin') or user.has_group('craft_brew_core.group_brew_general_manager') or user.has_group('craft_brew_core.group_brew_production_director') else [('company_id', 'in', company_ids), ('salesperson_id', '=', user.id)]</field>
+        <field name="groups" eval="[(4, ref('base.group_user'))]"/>
+    </record>
+</odoo>

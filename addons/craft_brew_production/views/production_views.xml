@@ -1,0 +1,5 @@
+<odoo>
+    <record id="view_brew_production_batch_tree" model="ir.ui.view"><field name="name">brew.production.batch.tree</field><field name="model">brew.production.batch</field><field name="arch" type="xml"><tree><field name="name"/><field name="production_plan_id"/><field name="factory_id"/><field name="tank_id"/><field name="state"/></tree></field></record>
+    <record id="action_brew_production_batch" model="ir.actions.act_window"><field name="name">生产批次</field><field name="res_model">brew.production.batch</field><field name="view_mode">tree,form</field></record>
+    <menuitem id="menu_brew_production_batch" name="生产批次" parent="craft_brew_core.menu_craft_brew_production" action="action_brew_production_batch" sequence="30"/>
+</odoo>

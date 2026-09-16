@@ -1,0 +1,55 @@
+<odoo>
+    <record id="view_brew_product_demand_tree" model="ir.ui.view">
+        <field name="name">brew.product.demand.tree</field>
+        <field name="model">brew.product.demand</field>
+        <field name="arch" type="xml">
+            <tree decoration-danger="state == 'cancelled'" decoration-success="state == 'confirmed'">
+                <field name="name"/>
+                <field name="customer_id"/>
+                <field name="product_tmpl_id"/>
+                <field name="packaging_id"/>
+                <field name="package_qty"/>
+                <field name="requested_volume_l"/>
+                <field name="requested_delivery_date"/>
+                <field name="salesperson_id"/>
+                <field name="state"/>
+            </tree>
+        </field>
+    </record>
+    <record id="view_brew_product_demand_form" model="ir.ui.view">
+        <field name="name">brew.product.demand.form</field>
+        <field name="model">brew.product.demand</field>
+        <field name="arch" type="xml">
+            <form>
+                <header><field name="state" widget="statusbar"/></header>
+                <sheet>
+                    <group>
+                        <group>
+                            <field name="name" readonly="1"/>
+                            <field name="company_id"/>
+                            <field name="factory_id"/>
+                            <field name="salesperson_id"/>
+                            <field name="customer_id"/>
+                        </group>
+                        <group>
+                            <field name="product_tmpl_id"/>
+                            <field name="packaging_id"/>
+                            <field name="package_qty"/>
+                            <field name="requested_volume_l"/>
+                            <field name="requested_delivery_date"/>
+                        </group>
+                    </group>
+                    <field name="customer_reference"/>
+                    <field name="notes"/>
+                    <field name="decision_reason" readonly="1"/>
+                </sheet>
+            </form>
+        </field>
+    </record>
+    <record id="action_brew_product_demand" model="ir.actions.act_window">
+        <field name="name">产品需求</field>
+        <field name="res_model">brew.product.demand</field>
+        <field name="view_mode">tree,form</field>
+    </record>
+    <menuitem id="menu_brew_product_demand" name="产品需求" parent="craft_brew_core.menu_craft_brew_production" action="action_brew_product_demand" sequence="10"/>
+</odoo>

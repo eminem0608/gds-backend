@@ -1,0 +1,8 @@
+<odoo noupdate="1">
+    <record id="ir_cron_brew_export_jobs" model="ir.cron">
+        <field name="name">Craft Brew: process export jobs</field>
+        <field name="model_id" ref="model_brew_export_job"/>
+        <field name="state">code</field><field name="code">model._cron_process()</field>
+        <field name="interval_number">1</field><field name="interval_type">minutes</field><field name="active">True</field>
+    </record>
+</odoo>

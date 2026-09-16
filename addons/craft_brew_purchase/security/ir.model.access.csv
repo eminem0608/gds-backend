@@ -1,0 +1,20 @@
+id,name,model_id:id,group_id:id,perm_read,perm_write,perm_create,perm_unlink
+access_brew_purchase_requisition_user,brew.purchase.requisition user,model_brew_purchase_requisition,base.group_user,1,0,0,0
+access_brew_purchase_requisition_purchase,brew.purchase.requisition purchase,model_brew_purchase_requisition,craft_brew_core.group_brew_purchase,1,1,1,0
+access_brew_purchase_requisition_director,brew.purchase.requisition director,model_brew_purchase_requisition,craft_brew_core.group_brew_production_director,1,1,0,0
+access_brew_purchase_requisition_line_user,brew.purchase.requisition.line user,model_brew_purchase_requisition_line,base.group_user,1,0,0,0
+access_brew_purchase_requisition_line_purchase,brew.purchase.requisition.line purchase,model_brew_purchase_requisition_line,craft_brew_core.group_brew_purchase,1,1,1,1
+access_brew_purchase_allocation_user,brew.purchase.requisition.allocation user,model_brew_purchase_requisition_allocation,base.group_user,1,0,0,0
+access_brew_purchase_allocation_purchase,brew.purchase.requisition.allocation purchase,model_brew_purchase_requisition_allocation,craft_brew_core.group_brew_purchase,1,1,1,1
+access_brew_supplier_shipment_user,brew.supplier.shipment user,model_brew_supplier_shipment,base.group_user,1,0,0,0
+access_brew_supplier_shipment_purchase,brew.supplier.shipment purchase,model_brew_supplier_shipment,craft_brew_core.group_brew_purchase,1,1,1,0
+access_brew_supplier_shipment_line_user,brew.supplier.shipment.line user,model_brew_supplier_shipment_line,base.group_user,1,0,0,0
+access_brew_supplier_shipment_line_purchase,brew.supplier.shipment.line purchase,model_brew_supplier_shipment_line,craft_brew_core.group_brew_purchase,1,1,1,1
+access_brew_receipt_user,brew.receipt user,model_brew_receipt,base.group_user,1,0,0,0
+access_brew_receipt_warehouse,brew.receipt warehouse,model_brew_receipt,craft_brew_core.group_brew_warehouse,1,1,1,0
+access_brew_receipt_line_user,brew.receipt.line user,model_brew_receipt_line,base.group_user,1,0,0,0
+access_brew_receipt_line_warehouse,brew.receipt.line warehouse,model_brew_receipt_line,craft_brew_core.group_brew_warehouse,1,1,1,1
+access_brew_quality_inspection_user,brew.quality.inspection user,model_brew_quality_inspection,base.group_user,1,0,0,0
+access_brew_quality_inspection_warehouse,brew.quality.inspection warehouse,model_brew_quality_inspection,craft_brew_core.group_brew_warehouse,1,1,1,0
+access_brew_quality_inspection_line_user,brew.quality.inspection.line user,model_brew_quality_inspection_line,base.group_user,1,0,0,0
+access_brew_quality_inspection_line_warehouse,brew.quality.inspection.line warehouse,model_brew_quality_inspection_line,craft_brew_core.group_brew_warehouse,1,1,1,1

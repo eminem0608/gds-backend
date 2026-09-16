@@ -1,0 +1,4 @@
+<odoo noupdate="1">
+    <record id="seq_brew_fermentation_session" model="ir.sequence"><field name="name">发酵会话</field><field name="code">brew.fermentation.session</field><field name="prefix">FER-%(y)s%(month)s%(day)s-</field><field name="padding">4</field></record>
+    <record id="seq_brew_production_anomaly" model="ir.sequence"><field name="name">生产异常</field><field name="code">brew.production.anomaly</field><field name="prefix">ANO-%(y)s%(month)s%(day)s-</field><field name="padding">5</field></record>
+</odoo>

@@ -30,7 +30,8 @@
                         <group>
                             <field name="name"/>
                             <field name="factory_id"/>
-                            <field name="equipment_id"/>
+                            <field name="maintenance_equipment_id"/>
+                            <field name="equipment_id" invisible="1"/>
                             <field name="tank_type"/>
                             <field name="capacity_l"/>
                         </group>

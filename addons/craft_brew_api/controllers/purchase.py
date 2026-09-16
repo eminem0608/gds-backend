@@ -1,0 +1,266 @@
+from odoo import http
+from odoo.http import request
+
+from ..services.purchase import PurchaseService
+from .base import ApiError, BrewApiController
+
+
+class PurchaseController(BrewApiController):
+    def _context(self, mutation=False):
+        user, company, _session, mode = self._authenticate()
+        if mutation:
+            self._validate_cookie_csrf(mode)
+        return user, company, PurchaseService(request.env, user, company)
+
+    @staticmethod
+    def _paging():
+        return (
+            max(int(request.httprequest.args.get("page", 1)), 1),
+            min(max(int(request.httprequest.args.get("page_size", 20)), 1), 100),
+        )
+
+    def _page_response(self, data, total, page, size, request_id):
+        return self._response(
+            data,
+            meta={
+                "page": page,
+                "page_size": size,
+                "total": total,
+                "has_more": page * size < total,
+            },
+            request_id=request_id,
+        )
+
+    @http.route("/api/v1/purchase-requisitions", type="http", auth="public", methods=["GET", "POST"], csrf=False)
+    def requisitions(self):
+        request_id = self._request_id()
+        try:
+            mutation = request.httprequest.method == "POST"
+            user, company, service = self._context(mutation)
+            if not mutation:
+                page, size = self._paging()
+                data, total = service.requisitions(
+                    page, size, request.httprequest.args.get("state")
+                )
+                return self._page_response(data, total, page, size, request_id)
+            payload = self._json_body()
+            idem, replay = self._start_idempotency(user, company, payload)
+            if replay:
+                return replay
+            record, data = service.create_requisition(payload)
+            self._audit("purchase_requisition", "create", request_id, user, company, {"id": record.id})
+            return self._complete_idempotency(idem, data, 201)
+        except Exception as exc:
+            return self._error_response(exc, request_id)
+
+    @http.route("/api/v1/purchase-requisitions/aggregate", type="http", auth="public", methods=["POST"], csrf=False)
+    def aggregate_requisitions(self):
+        request_id = self._request_id()
+        try:
+            payload = self._json_body()
+            user, company, service = self._context(True)
+            idem, replay = self._start_idempotency(user, company, payload)
+            if replay:
+                return replay
+            records, data = service.aggregate_requisitions(payload)
+            self._audit("purchase_requisition", "aggregate", request_id, user, company, {"ids": records.ids})
+            return self._complete_idempotency(idem, data, 201)
+        except Exception as exc:
+            return self._error_response(exc, request_id)
+
+    @http.route("/api/v1/purchase-requisitions/<int:record_id>/<string:action>", type="http", auth="public", methods=["POST"], csrf=False)
+    def requisition_action(self, record_id, action):
+        request_id = self._request_id()
+        try:
+            if action not in {"submit", "approve", "return"}:
+                raise ApiError("RESOURCE_NOT_FOUND", "采购需求动作不存在。", 404)
+            payload = self._json_body()
+            user, company, service = self._context(True)
+            idem, replay = self._start_idempotency(user, company, payload)
+            if replay:
+                return replay
+            record, data = service.requisition_action(record_id, action, payload)
+            self._audit("purchase_requisition", action, request_id, user, company, {"id": record.id})
+            return self._complete_idempotency(idem, data)
+        except Exception as exc:
+            return self._error_response(exc, request_id)
+
+    @http.route("/api/v1/purchase-orders/from-requisitions", type="http", auth="public", methods=["POST"], csrf=False)
+    def order_from_requisitions(self):
+        request_id = self._request_id()
+        try:
+            payload = self._json_body()
+            user, company, service = self._context(True)
+            idem, replay = self._start_idempotency(user, company, payload)
+            if replay:
+                return replay
+            order, data = service.create_order_from_requisitions(payload)
+            self._audit("purchase_order", "create_from_requisitions", request_id, user, company, {"id": order.id})
+            return self._complete_idempotency(idem, data, 201)
+        except Exception as exc:
+            return self._error_response(exc, request_id)
+
+    @http.route("/api/v1/purchase-orders", type="http", auth="public", methods=["GET", "POST"], csrf=False)
+    def orders(self):
+        request_id = self._request_id()
+        try:
+            mutation = request.httprequest.method == "POST"
+            user, company, service = self._context(mutation)
+            if not mutation:
+                page, size = self._paging()
+                data, total = service.orders(
+                    page, size, request.httprequest.args.get("state")
+                )
+                return self._page_response(data, total, page, size, request_id)
+            payload = self._json_body()
+            idem, replay = self._start_idempotency(user, company, payload)
+            if replay:
+                return replay
+            order, data = service.create_order(payload)
+            self._audit("purchase_order", "create", request_id, user, company, {"id": order.id})
+            return self._complete_idempotency(idem, data, 201)
+        except Exception as exc:
+            return self._error_response(exc, request_id)
+
+    @http.route("/api/v1/purchase-orders/<int:order_id>", type="http", auth="public", methods=["GET", "PATCH"], csrf=False)
+    def order(self, order_id):
+        request_id = self._request_id()
+        try:
+            mutation = request.httprequest.method == "PATCH"
+            user, company, service = self._context(mutation)
+            if not mutation:
+                order = service._record("purchase.order", order_id, "brew_factory_id")
+                return self._response(service._serialize_order(order), request_id=request_id)
+            payload = self._json_body()
+            idem, replay = self._start_idempotency(user, company, payload)
+            if replay:
+                return replay
+            order, data = service.update_order(order_id, payload)
+            self._audit("purchase_order", "update", request_id, user, company, {"id": order.id})
+            return self._complete_idempotency(idem, data)
+        except Exception as exc:
+            return self._error_response(exc, request_id)
+
+    @http.route("/api/v1/purchase-orders/<int:order_id>/<string:action>", type="http", auth="public", methods=["POST"], csrf=False)
+    def order_action(self, order_id, action):
+        request_id = self._request_id()
+        try:
+            if action not in {"submit", "approve", "place", "close"}:
+                raise ApiError("RESOURCE_NOT_FOUND", "采购订单动作不存在。", 404)
+            payload = self._json_body()
+            user, company, service = self._context(True)
+            idem, replay = self._start_idempotency(user, company, payload)
+            if replay:
+                return replay
+            order, data = service.order_action(order_id, action, payload)
+            self._audit("purchase_order", action, request_id, user, company, {"id": order.id})
+            return self._complete_idempotency(idem, data)
+        except Exception as exc:
+            return self._error_response(exc, request_id)
+
+    @http.route("/api/v1/purchase-orders/<int:order_id>/shipments", type="http", auth="public", methods=["POST"], csrf=False)
+    def create_shipment(self, order_id):
+        request_id = self._request_id()
+        try:
+            payload = self._json_body()
+            user, company, service = self._context(True)
+            idem, replay = self._start_idempotency(user, company, payload)
+            if replay:
+                return replay
+            shipment, data = service.create_shipment(order_id, payload)
+            self._audit("supplier_shipment", "create", request_id, user, company, {"id": shipment.id})
+            return self._complete_idempotency(idem, data, 201)
+        except Exception as exc:
+            return self._error_response(exc, request_id)
+
+    @http.route("/api/v1/receipts", type="http", auth="public", methods=["GET", "POST"], csrf=False)
+    def receipts(self):
+        request_id = self._request_id()
+        try:
+            mutation = request.httprequest.method == "POST"
+            user, company, service = self._context(mutation)
+            if not mutation:
+                page, size = self._paging()
+                data, total = service.receipts(
+                    page, size, request.httprequest.args.get("state")
+                )
+                return self._page_response(data, total, page, size, request_id)
+            payload = self._json_body()
+            idem, replay = self._start_idempotency(user, company, payload)
+            if replay:
+                return replay
+            receipt, data = service.create_receipt(payload)
+            self._audit("purchase_receipt", "create", request_id, user, company, {"id": receipt.id})
+            return self._complete_idempotency(idem, data, 201)
+        except Exception as exc:
+            return self._error_response(exc, request_id)
+
+    @http.route("/api/v1/receipts/<int:receipt_id>/<string:action>", type="http", auth="public", methods=["POST"], csrf=False)
+    def receipt_action(self, receipt_id, action):
+        request_id = self._request_id()
+        try:
+            if action not in {"confirm-arrival", "put-away"}:
+                raise ApiError("RESOURCE_NOT_FOUND", "收货动作不存在。", 404)
+            payload = self._json_body()
+            user, company, service = self._context(True)
+            idem, replay = self._start_idempotency(user, company, payload)
+            if replay:
+                return replay
+            receipt, data = service.receipt_action(receipt_id, action, payload)
+            self._audit("purchase_receipt", action, request_id, user, company, {"id": receipt.id})
+            return self._complete_idempotency(idem, data)
+        except Exception as exc:
+            return self._error_response(exc, request_id)
+
+    @http.route("/api/v1/quality-inspections", type="http", auth="public", methods=["GET", "POST"], csrf=False)
+    def inspections(self):
+        request_id = self._request_id()
+        try:
+            mutation = request.httprequest.method == "POST"
+            user, company, service = self._context(mutation)
+            if not mutation:
+                page, size = self._paging()
+                data, total = service.inspections(
+                    page, size, request.httprequest.args.get("state")
+                )
+                return self._page_response(data, total, page, size, request_id)
+            payload = self._json_body()
+            idem, replay = self._start_idempotency(user, company, payload)
+            if replay:
+                return replay
+            inspection, data = service.inspection_for_receipt(payload)
+            return self._complete_idempotency(idem, data, 200)
+        except Exception as exc:
+            return self._error_response(exc, request_id)
+
+    @http.route("/api/v1/quality-inspections/<int:inspection_id>/results", type="http", auth="public", methods=["PUT"], csrf=False)
+    def inspection_results(self, inspection_id):
+        request_id = self._request_id()
+        try:
+            payload = self._json_body()
+            user, company, service = self._context(True)
+            idem, replay = self._start_idempotency(user, company, payload)
+            if replay:
+                return replay
+            inspection, data = service.update_inspection_results(inspection_id, payload)
+            self._audit("quality_inspection", "update_results", request_id, user, company, {"id": inspection.id})
+            return self._complete_idempotency(idem, data)
+        except Exception as exc:
+            return self._error_response(exc, request_id)
+
+    @http.route("/api/v1/quality-inspections/<int:inspection_id>/<string:action>", type="http", auth="public", methods=["POST"], csrf=False)
+    def inspection_action(self, inspection_id, action):
+        request_id = self._request_id()
+        try:
+            if action not in {"pass", "reject"}:
+                raise ApiError("RESOURCE_NOT_FOUND", "质检动作不存在。", 404)
+            payload = self._json_body()
+            user, company, service = self._context(True)
+            idem, replay = self._start_idempotency(user, company, payload)
+            if replay:
+                return replay
+            inspection, data = service.inspection_action(inspection_id, action, payload)
+            self._audit("quality_inspection", action, request_id, user, company, {"id": inspection.id})
+            return self._complete_idempotency(idem, data)
+        except Exception as exc:
+            return self._error_response(exc, request_id)

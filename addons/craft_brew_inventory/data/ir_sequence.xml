@@ -1,0 +1,20 @@
+<odoo noupdate="1">
+    <record id="seq_brew_inventory_transfer" model="ir.sequence">
+        <field name="name">库存调拨单</field>
+        <field name="code">brew.inventory.transfer</field>
+        <field name="prefix">TRF-%(y)s%(month)s%(day)s-</field>
+        <field name="padding">4</field>
+    </record>
+    <record id="seq_brew_inventory_count" model="ir.sequence">
+        <field name="name">库存盘点单</field>
+        <field name="code">brew.inventory.count</field>
+        <field name="prefix">CNT-%(y)s%(month)s%(day)s-</field>
+        <field name="padding">4</field>
+    </record>
+    <record id="seq_brew_inventory_scrap" model="ir.sequence">
+        <field name="name">库存报损单</field>
+        <field name="code">brew.inventory.scrap</field>
+        <field name="prefix">SCR-%(y)s%(month)s%(day)s-</field>
+        <field name="padding">4</field>
+    </record>
+</odoo>

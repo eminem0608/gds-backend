@@ -1,0 +1,4 @@
+id,name,model_id:id,group_id:id,perm_read,perm_write,perm_create,perm_unlink
+access_brew_api_session_admin,brew.api.session admin,model_brew_api_session,craft_brew_core.group_brew_admin,1,0,0,0
+access_brew_audit_log_admin,brew.audit.log admin,model_brew_audit_log,craft_brew_core.group_brew_admin,1,0,0,0
+access_brew_outbox_event_admin,brew.outbox.event admin,model_brew_outbox_event,craft_brew_core.group_brew_admin,1,0,0,0

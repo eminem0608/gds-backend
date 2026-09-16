@@ -1,0 +1,3 @@
+<odoo noupdate="1">
+    <record id="seq_brew_export_job" model="ir.sequence"><field name="name">Export Job</field><field name="code">brew.export.job</field><field name="prefix">EXP/%(year)s/</field><field name="padding">6</field><field name="company_id" eval="False"/></record>
+</odoo>

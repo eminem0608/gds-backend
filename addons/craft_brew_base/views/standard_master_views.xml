@@ -1,0 +1,261 @@
+<odoo>
+    <record id="view_brew_product_template_tree" model="ir.ui.view">
+        <field name="name">brew.product.template.tree</field>
+        <field name="model">product.template</field>
+        <field name="arch" type="xml">
+            <tree>
+                <field name="name"/>
+                <field name="default_code"/>
+                <field name="brew_item_type"/>
+                <field name="brew_material_category"/>
+                <field name="brew_specification"/>
+                <field name="uom_id"/>
+                <field name="brew_shelf_life_days"/>
+                <field name="active"/>
+            </tree>
+        </field>
+    </record>
+
+    <record id="view_brew_product_template_form" model="ir.ui.view">
+        <field name="name">brew.product.template.form</field>
+        <field name="model">product.template</field>
+        <field name="arch" type="xml">
+            <form>
+                <sheet>
+                    <group>
+                        <group>
+                            <field name="name"/>
+                            <field name="default_code"/>
+                            <field name="company_id"/>
+                            <field name="brew_item_type"/>
+                            <field name="brew_material_category" invisible="brew_item_type != 'raw_material'"/>
+                            <field name="brew_brand"/>
+                            <field name="brew_specification"/>
+                        </group>
+                        <group>
+                            <field name="uom_id"/>
+                            <field name="uom_po_id"/>
+                            <field name="tracking"/>
+                            <field name="brew_shelf_life_days"/>
+                            <field name="standard_price"/>
+                            <field name="active"/>
+                        </group>
+                    </group>
+                    <group string="原料参数" invisible="brew_item_type != 'raw_material'">
+                        <field name="brew_extract_rate"/>
+                        <field name="brew_color_ebc"/>
+                        <field name="brew_alpha_acid"/>
+                        <field name="brew_flavor_desc"/>
+                    </group>
+                </sheet>
+            </form>
+        </field>
+    </record>
+
+    <record id="action_brew_standard_product" model="ir.actions.act_window">
+        <field name="name">物料与产品</field>
+        <field name="res_model">product.template</field>
+        <field name="view_mode">tree,form</field>
+        <field name="domain">[('brew_item_type', '!=', False)]</field>
+    </record>
+
+    <record id="view_brew_partner_tree" model="ir.ui.view">
+        <field name="name">brew.partner.tree</field>
+        <field name="model">res.partner</field>
+        <field name="arch" type="xml">
+            <tree>
+                <field name="name"/>
+                <field name="phone"/>
+                <field name="email"/>
+                <field name="supplier_rank"/>
+                <field name="customer_rank"/>
+                <field name="brew_customer_level"/>
+                <field name="brew_supply_category"/>
+                <field name="active"/>
+            </tree>
+        </field>
+    </record>
+
+    <record id="view_brew_partner_form" model="ir.ui.view">
+        <field name="name">brew.partner.form</field>
+        <field name="model">res.partner</field>
+        <field name="arch" type="xml">
+            <form>
+                <sheet>
+                    <group>
+                        <group>
+                            <field name="name"/>
+                            <field name="company_id"/>
+                            <field name="phone"/>
+                            <field name="email"/>
+                            <field name="street"/>
+                            <field name="street2"/>
+                            <field name="city"/>
+                        </group>
+                        <group>
+                            <field name="supplier_rank"/>
+                            <field name="customer_rank"/>
+                            <field name="brew_supply_category" invisible="supplier_rank == 0"/>
+                            <field name="brew_customer_level" invisible="customer_rank == 0"/>
+                            <field name="active"/>
+                        </group>
+                    </group>
+                </sheet>
+            </form>
+        </field>
+    </record>
+
+    <record id="action_brew_standard_supplier" model="ir.actions.act_window">
+        <field name="name">供应商</field>
+        <field name="res_model">res.partner</field>
+        <field name="view_mode">tree,form</field>
+        <field name="domain">[('supplier_rank', '&gt;', 0)]</field>
+        <field name="context">{'default_supplier_rank': 1}</field>
+    </record>
+
+    <record id="action_brew_standard_customer" model="ir.actions.act_window">
+        <field name="name">客户</field>
+        <field name="res_model">res.partner</field>
+        <field name="view_mode">tree,form</field>
+        <field name="domain">[('customer_rank', '&gt;', 0)]</field>
+        <field name="context">{'default_customer_rank': 1}</field>
+    </record>
+
+    <record id="view_brew_stock_location_tree" model="ir.ui.view">
+        <field name="name">brew.stock.location.tree</field>
+        <field name="model">stock.location</field>
+        <field name="arch" type="xml">
+            <tree>
+                <field name="complete_name"/>
+                <field name="brew_factory_id"/>
+                <field name="brew_location_type"/>
+                <field name="usage"/>
+                <field name="active"/>
+            </tree>
+        </field>
+    </record>
+
+    <record id="view_brew_stock_location_form" model="ir.ui.view">
+        <field name="name">brew.stock.location.form</field>
+        <field name="model">stock.location</field>
+        <field name="arch" type="xml">
+            <form>
+                <sheet>
+                    <group>
+                        <field name="name"/>
+                        <field name="company_id"/>
+                        <field name="location_id"/>
+                        <field name="usage"/>
+                        <field name="brew_factory_id"/>
+                        <field name="brew_location_type"/>
+                        <field name="active"/>
+                    </group>
+                </sheet>
+            </form>
+        </field>
+    </record>
+
+    <record id="action_brew_standard_warehouse" model="ir.actions.act_window">
+        <field name="name">仓库</field>
+        <field name="res_model">stock.warehouse</field>
+        <field name="view_mode">tree,form</field>
+        <field name="domain">[('brew_factory_id', '!=', False)]</field>
+    </record>
+
+    <record id="action_brew_standard_location" model="ir.actions.act_window">
+        <field name="name">库位</field>
+        <field name="res_model">stock.location</field>
+        <field name="view_mode">tree,form</field>
+        <field name="domain">[('brew_factory_id', '!=', False)]</field>
+    </record>
+
+    <record id="view_brew_maintenance_equipment_tree" model="ir.ui.view">
+        <field name="name">brew.maintenance.equipment.tree</field>
+        <field name="model">maintenance.equipment</field>
+        <field name="arch" type="xml">
+            <tree>
+                <field name="name"/>
+                <field name="brew_factory_id"/>
+                <field name="brew_equipment_type"/>
+                <field name="brew_capacity_l"/>
+                <field name="brew_status"/>
+                <field name="active"/>
+            </tree>
+        </field>
+    </record>
+
+    <record id="view_brew_maintenance_equipment_form" model="ir.ui.view">
+        <field name="name">brew.maintenance.equipment.form</field>
+        <field name="model">maintenance.equipment</field>
+        <field name="arch" type="xml">
+            <form>
+                <sheet>
+                    <group>
+                        <field name="name"/>
+                        <field name="company_id"/>
+                        <field name="brew_factory_id"/>
+                        <field name="brew_equipment_type"/>
+                        <field name="brew_capacity_l"/>
+                        <field name="brew_status"/>
+                        <field name="active"/>
+                    </group>
+                </sheet>
+            </form>
+        </field>
+    </record>
+
+    <record id="action_brew_standard_equipment" model="ir.actions.act_window">
+        <field name="name">生产设备</field>
+        <field name="res_model">maintenance.equipment</field>
+        <field name="view_mode">tree,form</field>
+        <field name="domain">[('brew_factory_id', '!=', False)]</field>
+    </record>
+
+    <record id="view_brew_configuration_rule_tree" model="ir.ui.view">
+        <field name="name">brew.configuration.rule.tree</field>
+        <field name="model">brew.configuration.rule</field>
+        <field name="arch" type="xml">
+            <tree decoration-success="state == 'active'" decoration-muted="state == 'inactive'">
+                <field name="rule_kind"/>
+                <field name="code"/>
+                <field name="name"/>
+                <field name="factory_id"/>
+                <field name="version"/>
+                <field name="state"/>
+                <field name="effective_at"/>
+            </tree>
+        </field>
+    </record>
+
+    <record id="view_brew_configuration_rule_form" model="ir.ui.view">
+        <field name="name">brew.configuration.rule.form</field>
+        <field name="model">brew.configuration.rule</field>
+        <field name="arch" type="xml">
+            <form>
+                <header>
+                    <button name="action_activate" string="启用" type="object" class="oe_highlight" invisible="state != 'draft'"/>
+                    <button name="action_deactivate" string="停用" type="object" invisible="state != 'active'"/>
+                    <field name="state" widget="statusbar"/>
+                </header>
+                <sheet>
+                    <group>
+                        <field name="rule_kind" readonly="state != 'draft'"/>
+                        <field name="code" readonly="state != 'draft'"/>
+                        <field name="name" readonly="state != 'draft'"/>
+                        <field name="company_id" readonly="state != 'draft'"/>
+                        <field name="factory_id" readonly="state != 'draft'"/>
+                        <field name="version" readonly="state != 'draft'"/>
+                        <field name="effective_at" readonly="1"/>
+                        <field name="config_json" readonly="state != 'draft'"/>
+                    </group>
+                </sheet>
+            </form>
+        </field>
+    </record>
+
+    <record id="action_brew_configuration_rule" model="ir.actions.act_window">
+        <field name="name">业务规则</field>
+        <field name="res_model">brew.configuration.rule</field>
+        <field name="view_mode">tree,form</field>
+    </record>
+</odoo>

@@ -1,0 +1,13 @@
+id,name,model_id:id,group_id:id,perm_read,perm_write,perm_create,perm_unlink
+access_brew_fermentation_session_user,brew.fermentation.session user,model_brew_fermentation_session,base.group_user,1,0,0,0
+access_brew_fermentation_session_operator,brew.fermentation.session operator,model_brew_fermentation_session,craft_brew_core.group_brew_operator,1,1,1,0
+access_brew_fermentation_node_user,brew.fermentation.node user,model_brew_fermentation_node,base.group_user,1,0,0,0
+access_brew_fermentation_node_operator,brew.fermentation.node operator,model_brew_fermentation_node,craft_brew_core.group_brew_operator,1,1,1,0
+access_brew_fermentation_action_user,brew.fermentation.action user,model_brew_fermentation_action,base.group_user,1,0,0,0
+access_brew_fermentation_action_operator,brew.fermentation.action operator,model_brew_fermentation_action,craft_brew_core.group_brew_operator,1,1,1,0
+access_brew_fermentation_reading_user,brew.fermentation.reading user,model_brew_fermentation_reading,base.group_user,1,0,0,0
+access_brew_fermentation_reading_operator,brew.fermentation.reading operator,model_brew_fermentation_reading,craft_brew_core.group_brew_operator,1,1,1,0
+access_brew_fermentation_reading_director,brew.fermentation.reading director,model_brew_fermentation_reading,craft_brew_core.group_brew_production_director,1,1,1,0
+access_brew_production_anomaly_user,brew.production.anomaly user,model_brew_production_anomaly,base.group_user,1,0,0,0
+access_brew_production_anomaly_operator,brew.production.anomaly operator,model_brew_production_anomaly,craft_brew_core.group_brew_operator,1,1,1,0
+access_brew_production_anomaly_director,brew.production.anomaly director,model_brew_production_anomaly,craft_brew_core.group_brew_production_director,1,1,1,0

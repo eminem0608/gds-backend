@@ -1,0 +1,15 @@
+id,name,model_id:id,group_id:id,perm_read,perm_write,perm_create,perm_unlink
+access_brew_reservation_user,brew.inventory.reservation user,model_brew_inventory_reservation,base.group_user,1,0,0,0
+access_brew_reservation_warehouse,brew.inventory.reservation warehouse,model_brew_inventory_reservation,craft_brew_core.group_brew_warehouse,1,1,1,0
+access_brew_transfer_user,brew.inventory.transfer user,model_brew_inventory_transfer,base.group_user,1,0,0,0
+access_brew_transfer_warehouse,brew.inventory.transfer warehouse,model_brew_inventory_transfer,craft_brew_core.group_brew_warehouse,1,1,1,0
+access_brew_transfer_line_user,brew.inventory.transfer.line user,model_brew_inventory_transfer_line,base.group_user,1,0,0,0
+access_brew_transfer_line_warehouse,brew.inventory.transfer.line warehouse,model_brew_inventory_transfer_line,craft_brew_core.group_brew_warehouse,1,1,1,1
+access_brew_count_user,brew.inventory.count user,model_brew_inventory_count,base.group_user,1,0,0,0
+access_brew_count_warehouse,brew.inventory.count warehouse,model_brew_inventory_count,craft_brew_core.group_brew_warehouse,1,1,1,0
+access_brew_count_line_user,brew.inventory.count.line user,model_brew_inventory_count_line,base.group_user,1,0,0,0
+access_brew_count_line_warehouse,brew.inventory.count.line warehouse,model_brew_inventory_count_line,craft_brew_core.group_brew_warehouse,1,1,1,1
+access_brew_scrap_user,brew.inventory.scrap user,model_brew_inventory_scrap,base.group_user,1,0,0,0
+access_brew_scrap_warehouse,brew.inventory.scrap warehouse,model_brew_inventory_scrap,craft_brew_core.group_brew_warehouse,1,1,1,0
+access_brew_scrap_line_user,brew.inventory.scrap.line user,model_brew_inventory_scrap_line,base.group_user,1,0,0,0
+access_brew_scrap_line_warehouse,brew.inventory.scrap.line warehouse,model_brew_inventory_scrap_line,craft_brew_core.group_brew_warehouse,1,1,1,1

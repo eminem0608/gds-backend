@@ -1,0 +1,14 @@
+<odoo noupdate="1">
+    <record id="seq_brew_material_requisition" model="ir.sequence">
+        <field name="name">生产领料单</field><field name="code">brew.material.requisition</field>
+        <field name="prefix">MR-%(y)s%(month)s%(day)s-</field><field name="padding">4</field>
+    </record>
+    <record id="seq_brew_production_batch" model="ir.sequence">
+        <field name="name">生产批次</field><field name="code">brew.production.batch</field>
+        <field name="prefix">BAT-%(y)s%(month)s%(day)s-</field><field name="padding">4</field>
+    </record>
+    <record id="seq_brew_production_record" model="ir.sequence">
+        <field name="name">生产记录</field><field name="code">brew.production.record</field>
+        <field name="prefix">PRD-%(y)s%(month)s%(day)s-</field><field name="padding">5</field>
+    </record>
+</odoo>

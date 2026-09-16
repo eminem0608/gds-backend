@@ -1,0 +1,7 @@
+id,name,model_id:id,group_id:id,perm_read,perm_write,perm_create,perm_unlink
+access_brew_approval_instance_user,brew.approval.instance user,model_brew_approval_instance,base.group_user,1,0,0,0
+access_brew_approval_instance_admin,brew.approval.instance admin,model_brew_approval_instance,craft_brew_core.group_brew_admin,1,1,1,0
+access_brew_approval_step_user,brew.approval.step user,model_brew_approval_step,base.group_user,1,0,0,0
+access_brew_approval_step_admin,brew.approval.step admin,model_brew_approval_step,craft_brew_core.group_brew_admin,1,1,1,0
+access_brew_task_user,brew.task user,model_brew_task,base.group_user,1,0,0,0
+access_brew_task_admin,brew.task admin,model_brew_task,craft_brew_core.group_brew_admin,1,1,1,0

@@ -1,0 +1,11 @@
+<odoo>
+    <record id="view_brew_packaging_order_tree" model="ir.ui.view"><field name="name">brew.packaging.order.tree</field><field name="model">brew.packaging.order</field><field name="arch" type="xml"><tree><field name="name"/><field name="factory_id"/><field name="batch_id"/><field name="product_id"/><field name="packaging_id"/><field name="output_qty"/><field name="state"/></tree></field></record>
+    <record id="action_brew_packaging_order" model="ir.actions.act_window"><field name="name">Packaging Orders</field><field name="res_model">brew.packaging.order</field><field name="view_mode">tree,form</field></record>
+    <record id="view_brew_trace_code_tree" model="ir.ui.view"><field name="name">brew.trace.code.tree</field><field name="model">brew.trace.code</field><field name="arch" type="xml"><tree><field name="code"/><field name="code_type"/><field name="product_id"/><field name="lot_id"/><field name="state"/><field name="outbound_order_id"/></tree></field></record>
+    <record id="action_brew_trace_code" model="ir.actions.act_window"><field name="name">Trace Codes</field><field name="res_model">brew.trace.code</field><field name="view_mode">tree,form</field></record>
+    <record id="view_brew_outbound_order_tree" model="ir.ui.view"><field name="name">brew.outbound.order.tree</field><field name="model">brew.outbound.order</field><field name="arch" type="xml"><tree><field name="name"/><field name="factory_id"/><field name="customer_id"/><field name="logistics_source"/><field name="logistics_provider"/><field name="logistics_no"/><field name="state"/></tree></field></record>
+    <record id="action_brew_outbound_order" model="ir.actions.act_window"><field name="name">Outbound Orders</field><field name="res_model">brew.outbound.order</field><field name="view_mode">tree,form</field></record>
+    <menuitem id="menu_brew_packaging_order" name="Packaging Orders" parent="craft_brew_core.menu_craft_brew_production" action="action_brew_packaging_order" sequence="50"/>
+    <menuitem id="menu_brew_trace_code" name="Trace Codes" parent="craft_brew_core.menu_craft_brew_inventory" action="action_brew_trace_code" sequence="80"/>
+    <menuitem id="menu_brew_outbound_order" name="Outbound Orders" parent="craft_brew_core.menu_craft_brew_inventory" action="action_brew_outbound_order" sequence="90"/>
+</odoo>

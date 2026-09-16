@@ -19,13 +19,19 @@
     <menuitem id="menu_brew_warehouse"
               name="仓库管理"
               parent="menu_brew_base_settings"
-              action="action_brew_warehouse"
+              action="action_brew_standard_warehouse"
               sequence="20"/>
+
+    <menuitem id="menu_brew_location"
+              name="库位管理"
+              parent="menu_brew_base_settings"
+              action="action_brew_standard_location"
+              sequence="25"/>
 
     <menuitem id="menu_brew_equipment"
               name="设备管理"
               parent="menu_brew_base_settings"
-              action="action_brew_equipment"
+              action="action_brew_standard_equipment"
               sequence="30"/>
 
     <menuitem id="menu_brew_tank"
@@ -37,18 +43,24 @@
     <menuitem id="menu_brew_material"
               name="原料管理"
               parent="menu_brew_base_settings"
-              action="action_brew_material"
+              action="action_brew_standard_product"
               sequence="50"/>
 
     <menuitem id="menu_brew_supplier"
               name="供应商管理"
               parent="menu_brew_base_settings"
-              action="action_brew_supplier"
+              action="action_brew_standard_supplier"
               sequence="60"/>
 
     <menuitem id="menu_brew_customer"
               name="客户管理"
               parent="menu_brew_base_settings"
-              action="action_brew_customer"
+              action="action_brew_standard_customer"
               sequence="70"/>
+
+    <menuitem id="menu_brew_configuration_rule"
+              name="业务规则"
+              parent="menu_brew_base_settings"
+              action="action_brew_configuration_rule"
+              sequence="80"/>
 </odoo>

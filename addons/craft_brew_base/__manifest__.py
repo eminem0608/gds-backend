@@ -5,9 +5,10 @@
     "category": "Manufacturing",
     "author": "Craft Brew",
     "license": "LGPL-3",
-    "depends": ["craft_brew_core"],
+    "depends": ["craft_brew_core", "stock", "purchase", "maintenance"],
     "data": [
         "security/ir.model.access.csv",
+        "security/record_rules.xml",
         "views/factory_views.xml",
         "views/warehouse_views.xml",
         "views/equipment_views.xml",
@@ -15,8 +16,10 @@
         "views/supplier_views.xml",
         "views/customer_views.xml",
         "views/material_views.xml",
+        "views/standard_master_views.xml",
         "views/menu_views.xml",
     ],
     "application": False,
     "installable": True,
+    "post_init_hook": "post_init_hook",
 }

@@ -1,0 +1,5 @@
+<odoo>
+    <record id="view_brew_task_tree" model="ir.ui.view"><field name="name">brew.task.tree</field><field name="model">brew.task</field><field name="arch" type="xml"><tree><field name="name"/><field name="task_type"/><field name="factory_id"/><field name="role_code"/><field name="assignee_id"/><field name="priority"/><field name="due_at"/><field name="state"/></tree></field></record>
+    <record id="action_brew_task" model="ir.actions.act_window"><field name="name">统一任务</field><field name="res_model">brew.task</field><field name="view_mode">tree,form</field></record>
+    <menuitem id="menu_brew_task" name="统一任务" parent="craft_brew_core.menu_craft_brew_tasks" action="action_brew_task" sequence="10"/>
+</odoo>

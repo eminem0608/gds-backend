@@ -1,0 +1,113 @@
+<odoo>
+    <record id="rule_brew_factory_company" model="ir.rule">
+        <field name="name">厂区：企业与授权厂区范围</field>
+        <field name="model_id" ref="model_brew_factory"/>
+        <field name="domain_force">[('company_id', 'in', company_ids)] if user.has_group('craft_brew_core.group_brew_admin') or user.has_group('craft_brew_core.group_brew_general_manager') else [('company_id', 'in', company_ids), ('id', 'in', user.brew_factory_ids.ids)]</field>
+        <field name="groups" eval="[(4, ref('base.group_user'))]"/>
+    </record>
+
+    <record id="rule_brew_warehouse_scope" model="ir.rule">
+        <field name="name">仓库：企业与授权厂区范围</field>
+        <field name="model_id" ref="model_brew_warehouse"/>
+        <field name="domain_force">[('company_id', 'in', company_ids)] if user.has_group('craft_brew_core.group_brew_admin') or user.has_group('craft_brew_core.group_brew_general_manager') else [('company_id', 'in', company_ids), ('factory_id', 'in', user.brew_factory_ids.ids)]</field>
+        <field name="groups" eval="[(4, ref('base.group_user'))]"/>
+    </record>
+
+    <record id="rule_brew_equipment_scope" model="ir.rule">
+        <field name="name">设备：企业与授权厂区范围</field>
+        <field name="model_id" ref="model_brew_equipment"/>
+        <field name="domain_force">[('company_id', 'in', company_ids)] if user.has_group('craft_brew_core.group_brew_admin') or user.has_group('craft_brew_core.group_brew_general_manager') else [('company_id', 'in', company_ids), ('factory_id', 'in', user.brew_factory_ids.ids)]</field>
+        <field name="groups" eval="[(4, ref('base.group_user'))]"/>
+    </record>
+
+    <record id="rule_brew_tank_scope" model="ir.rule">
+        <field name="name">罐体：企业与授权厂区范围</field>
+        <field name="model_id" ref="model_brew_tank"/>
+        <field name="domain_force">[('company_id', 'in', company_ids)] if user.has_group('craft_brew_core.group_brew_admin') or user.has_group('craft_brew_core.group_brew_general_manager') else [('company_id', 'in', company_ids), ('factory_id', 'in', user.brew_factory_ids.ids)]</field>
+        <field name="groups" eval="[(4, ref('base.group_user'))]"/>
+    </record>
+
+    <record id="rule_brew_supplier_company" model="ir.rule">
+        <field name="name">供应商：企业范围</field>
+        <field name="model_id" ref="model_brew_supplier"/>
+        <field name="domain_force">[('company_id', 'in', company_ids)]</field>
+        <field name="groups" eval="[(4, ref('base.group_user'))]"/>
+    </record>
+
+    <record id="rule_brew_customer_company" model="ir.rule">
+        <field name="name">客户：企业范围</field>
+        <field name="model_id" ref="model_brew_customer"/>
+        <field name="domain_force">[('company_id', 'in', company_ids)]</field>
+        <field name="groups" eval="[(4, ref('base.group_user'))]"/>
+    </record>
+
+    <record id="rule_brew_material_company" model="ir.rule">
+        <field name="name">物料：企业范围</field>
+        <field name="model_id" ref="model_brew_material"/>
+        <field name="domain_force">[('company_id', 'in', company_ids)]</field>
+        <field name="groups" eval="[(4, ref('base.group_user'))]"/>
+    </record>
+
+    <record id="rule_brew_configuration_rule_scope" model="ir.rule">
+        <field name="name">配置规则：企业与厂区范围</field>
+        <field name="model_id" ref="model_brew_configuration_rule"/>
+        <field name="domain_force">[('company_id', 'in', company_ids)] if user.has_group('craft_brew_core.group_brew_admin') or user.has_group('craft_brew_core.group_brew_general_manager') else [('company_id', 'in', company_ids), '|', ('factory_id', '=', False), ('factory_id', 'in', user.brew_factory_ids.ids)]</field>
+        <field name="groups" eval="[(4, ref('base.group_user'))]"/>
+    </record>
+
+    <record id="rule_brew_stock_warehouse_scope" model="ir.rule">
+        <field name="name">标准仓库：企业与厂区范围</field>
+        <field name="model_id" ref="stock.model_stock_warehouse"/>
+        <field name="domain_force">[('company_id', 'in', company_ids)] if user.has_group('craft_brew_core.group_brew_admin') or user.has_group('craft_brew_core.group_brew_general_manager') else [('company_id', 'in', company_ids), ('brew_factory_id', 'in', user.brew_factory_ids.ids)]</field>
+        <field name="groups" eval="[(4, ref('base.group_user'))]"/>
+    </record>
+
+    <record id="rule_brew_stock_location_scope" model="ir.rule">
+        <field name="name">标准库位：企业与厂区范围</field>
+        <field name="model_id" ref="stock.model_stock_location"/>
+        <field name="domain_force">['|', ('company_id', '=', False), ('company_id', 'in', company_ids)] if user.has_group('craft_brew_core.group_brew_admin') or user.has_group('craft_brew_core.group_brew_general_manager') else ['&amp;', '|', ('company_id', '=', False), ('company_id', 'in', company_ids), '|', ('usage', '!=', 'internal'), ('brew_factory_id', 'in', user.brew_factory_ids.ids)]</field>
+        <field name="groups" eval="[(4, ref('base.group_user'))]"/>
+    </record>
+
+    <record id="rule_brew_maintenance_equipment_scope" model="ir.rule">
+        <field name="name">标准设备：企业与厂区范围</field>
+        <field name="model_id" ref="maintenance.model_maintenance_equipment"/>
+        <field name="domain_force">[('company_id', 'in', company_ids)] if user.has_group('craft_brew_core.group_brew_admin') or user.has_group('craft_brew_core.group_brew_general_manager') else [('company_id', 'in', company_ids), ('brew_factory_id', 'in', user.brew_factory_ids.ids)]</field>
+        <field name="groups" eval="[(4, ref('base.group_user'))]"/>
+    </record>
+
+    <record id="rule_brew_product_company" model="ir.rule">
+        <field name="name">精酿产品：企业范围</field>
+        <field name="model_id" ref="product.model_product_template"/>
+        <field name="domain_force">['|', ('brew_item_type', '=', False), ('company_id', 'in', company_ids)]</field>
+        <field name="groups" eval="[(4, ref('base.group_user'))]"/>
+    </record>
+
+    <record id="rule_brew_partner_company" model="ir.rule">
+        <field name="name">业务伙伴：企业范围</field>
+        <field name="model_id" ref="base.model_res_partner"/>
+        <field name="domain_force">['|', '&amp;', ('supplier_rank', '=', 0), ('customer_rank', '=', 0), ('company_id', 'in', company_ids)]</field>
+        <field name="groups" eval="[(4, ref('base.group_user'))]"/>
+    </record>
+
+    <record id="rule_brew_import_batch_company" model="ir.rule">
+        <field name="name">导入批次：企业范围</field>
+        <field name="model_id" ref="model_brew_import_batch"/>
+        <field name="domain_force">[('company_id', 'in', company_ids)]</field>
+        <field name="groups" eval="[(4, ref('craft_brew_core.group_brew_admin'))]"/>
+    </record>
+
+    <record id="rule_brew_import_line_company" model="ir.rule">
+        <field name="name">导入明细：企业范围</field>
+        <field name="model_id" ref="model_brew_import_line"/>
+        <field name="domain_force">[('company_id', 'in', company_ids)]</field>
+        <field name="groups" eval="[(4, ref('craft_brew_core.group_brew_admin'))]"/>
+    </record>
+
+    <record id="rule_brew_equipment_unavailability_scope" model="ir.rule">
+        <field name="name">设备不可用时段：企业与厂区范围</field>
+        <field name="model_id" ref="model_brew_equipment_unavailability"/>
+        <field name="domain_force">[('company_id', 'in', company_ids)] if user.has_group('craft_brew_core.group_brew_admin') or user.has_group('craft_brew_core.group_brew_general_manager') else [('company_id', 'in', company_ids), ('factory_id', 'in', user.brew_factory_ids.ids)]</field>
+        <field name="groups" eval="[(4, ref('base.group_user'))]"/>
+    </record>
+</odoo>

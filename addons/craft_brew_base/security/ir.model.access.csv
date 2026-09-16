@@ -1,15 +1,33 @@
 id,name,model_id:id,group_id:id,perm_read,perm_write,perm_create,perm_unlink
 access_brew_factory_manager,brew.factory manager,model_brew_factory,craft_brew_core.group_brew_production_director,1,1,1,1
 access_brew_factory_user,brew.factory user,model_brew_factory,base.group_user,1,0,0,0
-access_brew_warehouse_manager,brew.warehouse manager,model_brew_warehouse,craft_brew_core.group_brew_warehouse,1,1,1,1
+access_brew_warehouse_manager,brew.warehouse manager,model_brew_warehouse,craft_brew_core.group_brew_warehouse,1,0,0,0
 access_brew_warehouse_user,brew.warehouse user,model_brew_warehouse,base.group_user,1,0,0,0
-access_brew_equipment_manager,brew.equipment manager,model_brew_equipment,craft_brew_core.group_brew_production_director,1,1,1,1
+access_brew_equipment_manager,brew.equipment manager,model_brew_equipment,craft_brew_core.group_brew_production_director,1,0,0,0
 access_brew_equipment_user,brew.equipment user,model_brew_equipment,base.group_user,1,0,0,0
 access_brew_tank_manager,brew.tank manager,model_brew_tank,craft_brew_core.group_brew_production_director,1,1,1,1
 access_brew_tank_user,brew.tank user,model_brew_tank,base.group_user,1,0,0,0
-access_brew_supplier_manager,brew.supplier manager,model_brew_supplier,craft_brew_core.group_brew_purchase,1,1,1,1
+access_brew_supplier_manager,brew.supplier manager,model_brew_supplier,craft_brew_core.group_brew_purchase,1,0,0,0
 access_brew_supplier_user,brew.supplier user,model_brew_supplier,base.group_user,1,0,0,0
-access_brew_customer_manager,brew.customer manager,model_brew_customer,craft_brew_core.group_brew_sales,1,1,1,1
+access_brew_customer_manager,brew.customer manager,model_brew_customer,craft_brew_core.group_brew_sales,1,0,0,0
 access_brew_customer_user,brew.customer user,model_brew_customer,base.group_user,1,0,0,0
 access_brew_material_manager,brew.material manager,model_brew_material,craft_brew_core.group_brew_production_director,1,1,1,1
 access_brew_material_user,brew.material user,model_brew_material,base.group_user,1,0,0,0
+access_brew_factory_admin,brew.factory admin,model_brew_factory,craft_brew_core.group_brew_admin,1,1,1,1
+access_brew_warehouse_admin,brew.warehouse admin,model_brew_warehouse,craft_brew_core.group_brew_admin,1,0,0,0
+access_brew_equipment_admin,brew.equipment admin,model_brew_equipment,craft_brew_core.group_brew_admin,1,0,0,0
+access_brew_tank_admin,brew.tank admin,model_brew_tank,craft_brew_core.group_brew_admin,1,1,1,1
+access_brew_supplier_admin,brew.supplier admin,model_brew_supplier,craft_brew_core.group_brew_admin,1,0,0,0
+access_brew_customer_admin,brew.customer admin,model_brew_customer,craft_brew_core.group_brew_admin,1,0,0,0
+access_brew_material_admin,brew.material admin,model_brew_material,craft_brew_core.group_brew_admin,1,0,0,0
+access_brew_configuration_rule_admin,brew.configuration.rule admin,model_brew_configuration_rule,craft_brew_core.group_brew_admin,1,1,1,0
+access_product_template_brew_admin,product.template brew admin,product.model_product_template,craft_brew_core.group_brew_admin,1,1,1,0
+access_product_packaging_brew_admin,product.packaging brew admin,product.model_product_packaging,craft_brew_core.group_brew_admin,1,1,1,0
+access_partner_brew_admin,res.partner brew admin,base.model_res_partner,craft_brew_core.group_brew_admin,1,1,1,0
+access_stock_warehouse_brew_admin,stock.warehouse brew admin,stock.model_stock_warehouse,craft_brew_core.group_brew_admin,1,1,1,0
+access_stock_location_brew_admin,stock.location brew admin,stock.model_stock_location,craft_brew_core.group_brew_admin,1,1,1,0
+access_maintenance_equipment_brew_admin,maintenance.equipment brew admin,maintenance.model_maintenance_equipment,craft_brew_core.group_brew_admin,1,1,1,0
+access_brew_import_batch_admin,brew.import.batch admin,model_brew_import_batch,craft_brew_core.group_brew_admin,1,1,1,0
+access_brew_import_line_admin,brew.import.line admin,model_brew_import_line,craft_brew_core.group_brew_admin,1,1,1,0
+access_equipment_unavailability_admin,brew.equipment.unavailability admin,model_brew_equipment_unavailability,craft_brew_core.group_brew_admin,1,1,1,0
+access_equipment_unavailability_director,brew.equipment.unavailability director,model_brew_equipment_unavailability,craft_brew_core.group_brew_production_director,1,1,1,0
