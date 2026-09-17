@@ -271,6 +271,21 @@ class RouteContractTest(unittest.TestCase):
 
 
 class FrontendContractTest(unittest.TestCase):
+    def test_web_runtime_templates_use_the_vue_compiler_build(self):
+        web_root = ROOT.parent / "gds-web"
+        app_text = (web_root / "src" / "App.vue").read_text(encoding="utf-8")
+        vite_text = (web_root / "vite.config.js").read_text(encoding="utf-8")
+        self.assertIn("template: `", app_text)
+        self.assertIn('vue/dist/vue.esm-bundler.js', vite_text)
+
+    def test_web_requires_explicit_login_after_every_page_load(self):
+        app_text = (ROOT.parent / "gds-web" / "src" / "App.vue").read_text(
+            encoding="utf-8"
+        )
+        self.assertNotIn("restoreSession", app_text)
+        self.assertNotIn("brewApi.me()", app_text)
+        self.assertIn('v-if="!authContext"', app_text)
+
     def test_web_operational_pages_use_live_api_contracts(self):
         web_root = ROOT.parent / "gds-web" / "src"
         app_text = (web_root / "App.vue").read_text(encoding="utf-8")
