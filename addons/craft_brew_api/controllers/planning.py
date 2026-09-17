@@ -7,7 +7,7 @@ from .base import ApiError, BrewApiController
 
 
 class PlanningController(BrewApiController):
-    def _context(self, mutation=False):
+    def _planning_context(self, mutation=False):
         user, company, _session, mode = self._authenticate()
         if mutation: self._validate_cookie_csrf(mode)
         return user, company, PlanningService(request.env, user, company)
@@ -17,7 +17,7 @@ class PlanningController(BrewApiController):
         request_id = self._request_id()
         try:
             mutation = request.httprequest.method == "POST"
-            user, company, service = self._context(mutation)
+            user, company, service = self._planning_context(mutation)
             if not mutation:
                 page = max(int(request.httprequest.args.get("page", 1)), 1); size = min(max(int(request.httprequest.args.get("page_size", 20)), 1), 100)
                 data, total = service.list(page, size, request.httprequest.args.get("state"))
@@ -33,7 +33,7 @@ class PlanningController(BrewApiController):
     def plan(self, plan_id):
         request_id = self._request_id()
         try:
-            mutation = request.httprequest.method == "PATCH"; user, company, service = self._context(mutation)
+            mutation = request.httprequest.method == "PATCH"; user, company, service = self._planning_context(mutation)
             if not mutation: return self._response(service.serialize(service._record(plan_id), True), request_id=request_id)
             payload = self._json_body(); idem, replay = self._start_idempotency(user, company, payload)
             if replay: return replay
@@ -46,12 +46,12 @@ class PlanningController(BrewApiController):
     def progress(self, plan_id):
         request_id = self._request_id()
         try:
-            _user, _company, service = self._context()
+            _user, _company, service = self._planning_context()
             return self._response(service.progress(plan_id), request_id=request_id)
         except Exception as exc: return self._error_response(exc, request_id)
 
     @http.route("/api/v1/production-plans/<int:plan_id>/<string:action>", type="http", auth="public", methods=["POST"], csrf=False)
-    def action(self, plan_id, action):
+    def planning_action(self, plan_id, action):
         request_id = self._request_id()
         try:
             allowed = {
@@ -67,7 +67,7 @@ class PlanningController(BrewApiController):
                 "terminate",
             }
             if action not in allowed: raise ApiError("RESOURCE_NOT_FOUND", "生产计划动作不存在。", 404)
-            payload = self._json_body(); user, company, service = self._context(True)
+            payload = self._json_body(); user, company, service = self._planning_context(True)
             idem, replay = self._start_idempotency(user, company, payload)
             if replay: return replay
             if action in {"check-inventory", "reserve", "release-reservations"}:
@@ -93,7 +93,7 @@ class PlanningController(BrewApiController):
     def create_from_demand(self, demand_id):
         request_id = self._request_id()
         try:
-            payload = {**self._json_body(), "demand_id": demand_id}; user, company, service = self._context(True)
+            payload = {**self._json_body(), "demand_id": demand_id}; user, company, service = self._planning_context(True)
             idem, replay = self._start_idempotency(user, company, payload)
             if replay: return replay
             plan, data = service.create(payload)

@@ -1,3 +1,4 @@
+import ast
 import importlib.util
 import pathlib
 import unittest
@@ -63,6 +64,23 @@ class RoleServiceTest(unittest.TestCase):
 
 
 class RouteContractTest(unittest.TestCase):
+    def test_controller_method_names_are_unique(self):
+        owners = {}
+        controller_root = ROOT / "addons/craft_brew_api/controllers"
+        for path in controller_root.glob("*.py"):
+            if path.name in {"__init__.py", "base.py"}:
+                continue
+            tree = ast.parse(path.read_text(encoding="utf-8"))
+            for node in tree.body:
+                if not isinstance(node, ast.ClassDef):
+                    continue
+                for item in node.body:
+                    if isinstance(item, (ast.FunctionDef, ast.AsyncFunctionDef)):
+                        owners.setdefault(item.name, []).append(f"{path.name}:{node.name}")
+
+        duplicates = {name: locations for name, locations in owners.items() if len(locations) > 1}
+        self.assertEqual({}, duplicates)
+
     def test_sprint_one_routes_are_declared(self):
         controller_text = "\n".join(
             path.read_text(encoding="utf-8")

@@ -6,7 +6,7 @@ from .base import ApiError, BrewApiController
 
 
 class DemandController(BrewApiController):
-    def _context(self, mutation=False):
+    def _demand_context(self, mutation=False):
         user, company, _session, auth_mode = self._authenticate()
         if mutation:
             self._validate_cookie_csrf(auth_mode)
@@ -17,7 +17,7 @@ class DemandController(BrewApiController):
         request_id = self._request_id()
         try:
             mutation = request.httprequest.method == "POST"
-            user, company, service = self._context(mutation)
+            user, company, service = self._demand_context(mutation)
             if not mutation:
                 page = max(int(request.httprequest.args.get("page", 1)), 1)
                 page_size = min(max(int(request.httprequest.args.get("page_size", 20)), 1), 100)
@@ -38,7 +38,7 @@ class DemandController(BrewApiController):
         request_id = self._request_id()
         try:
             mutation = request.httprequest.method == "PATCH"
-            user, company, service = self._context(mutation)
+            user, company, service = self._demand_context(mutation)
             if not mutation:
                 return self._response(service.serialize(service._record(demand_id)), request_id=request_id)
             payload = self._json_body()
@@ -64,7 +64,7 @@ class DemandController(BrewApiController):
             if action not in {"submit", "confirm", "return", "cancel"}:
                 raise ApiError("RESOURCE_NOT_FOUND", "产品需求动作不存在。", 404)
             payload = self._json_body()
-            user, company, service = self._context(True)
+            user, company, service = self._demand_context(True)
             idem, replay = self._start_idempotency(user, company, payload)
             if replay:
                 return replay

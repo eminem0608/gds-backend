@@ -6,7 +6,7 @@ from .base import ApiError, BrewApiController
 
 
 class WorkflowController(BrewApiController):
-    def _context(self, mutation=False):
+    def _workflow_context(self, mutation=False):
         user, company, _session, mode = self._authenticate()
         if mutation: self._validate_cookie_csrf(mode)
         return user, company, WorkflowService(request.env, user, company)
@@ -18,7 +18,7 @@ class WorkflowController(BrewApiController):
     def tasks(self):
         request_id = self._request_id()
         try:
-            _user, _company, service = self._context(); page, size = self._pagination()
+            _user, _company, service = self._workflow_context(); page, size = self._pagination()
             data, total = service.list_tasks(page, size, request.httprequest.args.get("state"))
             return self._response(data, meta={"page": page, "page_size": size, "total": total, "has_more": page * size < total}, request_id=request_id)
         except Exception as exc: return self._error_response(exc, request_id)
@@ -28,7 +28,7 @@ class WorkflowController(BrewApiController):
         request_id = self._request_id()
         try:
             if action not in {"claim", "start", "submit", "return", "reassign"}: raise ApiError("RESOURCE_NOT_FOUND", "任务动作不存在。", 404)
-            payload = self._json_body(); user, company, service = self._context(True)
+            payload = self._json_body(); user, company, service = self._workflow_context(True)
             idem, replay = self._start_idempotency(user, company, payload)
             if replay: return replay
             task, data = service.task_action(task_id, action, payload)
@@ -40,7 +40,7 @@ class WorkflowController(BrewApiController):
     def approvals(self):
         request_id = self._request_id()
         try:
-            _user, _company, service = self._context(); page, size = self._pagination()
+            _user, _company, service = self._workflow_context(); page, size = self._pagination()
             data, total = service.list_approvals(page, size, request.httprequest.args.get("state"))
             return self._response(data, meta={"page": page, "page_size": size, "total": total, "has_more": page * size < total}, request_id=request_id)
         except Exception as exc: return self._error_response(exc, request_id)
@@ -50,7 +50,7 @@ class WorkflowController(BrewApiController):
         request_id = self._request_id()
         try:
             if action not in {"approve", "return", "transfer"}: raise ApiError("RESOURCE_NOT_FOUND", "审批动作不存在。", 404)
-            payload = self._json_body(); user, company, service = self._context(True)
+            payload = self._json_body(); user, company, service = self._workflow_context(True)
             idem, replay = self._start_idempotency(user, company, payload)
             if replay: return replay
             step, data = service.approval_action(step_id, action, payload)

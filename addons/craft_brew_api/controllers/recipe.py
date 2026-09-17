@@ -6,7 +6,7 @@ from .base import ApiError, BrewApiController
 
 
 class RecipeController(BrewApiController):
-    def _context(self, mutation=False):
+    def _recipe_context(self, mutation=False):
         user, company, _session, auth_mode = self._authenticate()
         if mutation:
             self._validate_cookie_csrf(auth_mode)
@@ -22,7 +22,7 @@ class RecipeController(BrewApiController):
         request_id = self._request_id()
         try:
             mutation = request.httprequest.method == "POST"
-            user, company, service = self._context(mutation)
+            user, company, service = self._recipe_context(mutation)
             if not mutation:
                 page, page_size = self._page_args()
                 active_arg = request.httprequest.args.get("active")
@@ -44,7 +44,7 @@ class RecipeController(BrewApiController):
         request_id = self._request_id()
         try:
             mutation = request.httprequest.method == "PATCH"
-            user, company, service = self._context(mutation)
+            user, company, service = self._recipe_context(mutation)
             if not mutation:
                 return self._response(service.serialize_recipe(service._recipe(recipe_id)), request_id=request_id)
             payload = self._json_body()
@@ -62,7 +62,7 @@ class RecipeController(BrewApiController):
         request_id = self._request_id()
         try:
             mutation = request.httprequest.method == "POST"
-            user, company, service = self._context(mutation)
+            user, company, service = self._recipe_context(mutation)
             if not mutation:
                 return self._response(service.list_versions(recipe_id), request_id=request_id)
             payload = self._json_body()
@@ -80,7 +80,7 @@ class RecipeController(BrewApiController):
         request_id = self._request_id()
         try:
             mutation = request.httprequest.method == "PATCH"
-            user, company, service = self._context(mutation)
+            user, company, service = self._recipe_context(mutation)
             if not mutation:
                 return self._response(service.serialize_version(service._version(version_id), True), request_id=request_id)
             payload = self._json_body()
@@ -107,7 +107,7 @@ class RecipeController(BrewApiController):
         request_id = self._request_id()
         try:
             payload = self._json_body()
-            user, company, service = self._context(True)
+            user, company, service = self._recipe_context(True)
             idem, replay = self._start_idempotency(user, company, payload)
             if replay:
                 return replay
@@ -127,7 +127,7 @@ class RecipeController(BrewApiController):
         request_id = self._request_id()
         try:
             payload = self._json_body()
-            user, company, service = self._context(True)
+            user, company, service = self._recipe_context(True)
             idem, replay = self._start_idempotency(user, company, payload)
             if replay:
                 return replay
@@ -141,7 +141,7 @@ class RecipeController(BrewApiController):
         request_id = self._request_id()
         try:
             payload = self._json_body()
-            user, company, service = self._context(True)
+            user, company, service = self._recipe_context(True)
             idem, replay = self._start_idempotency(user, company, payload)
             if replay:
                 return replay
@@ -164,7 +164,7 @@ class RecipeController(BrewApiController):
             if action not in {"submit", "approve", "return", "activate", "deactivate"}:
                 raise ApiError("RESOURCE_NOT_FOUND", "配方版本动作不存在。", 404)
             payload = self._json_body()
-            user, company, service = self._context(True)
+            user, company, service = self._recipe_context(True)
             idem, replay = self._start_idempotency(user, company, payload)
             if replay:
                 return replay
@@ -189,7 +189,7 @@ class RecipeController(BrewApiController):
     def compare(self, version_id, other_id):
         request_id = self._request_id()
         try:
-            _user, _company, service = self._context()
+            _user, _company, service = self._recipe_context()
             return self._response(service.compare(version_id, other_id), request_id=request_id)
         except Exception as exc:
             return self._error_response(exc, request_id)

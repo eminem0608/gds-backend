@@ -18,6 +18,7 @@
         <field name="arch" type="xml">
             <form>
                 <sheet>
+                    <field name="company_id" invisible="1"/>
                     <group>
                         <field name="name"/>
                         <field name="factory_id"/>

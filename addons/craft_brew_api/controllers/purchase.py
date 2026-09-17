@@ -6,20 +6,20 @@ from .base import ApiError, BrewApiController
 
 
 class PurchaseController(BrewApiController):
-    def _context(self, mutation=False):
+    def _purchase_context(self, mutation=False):
         user, company, _session, mode = self._authenticate()
         if mutation:
             self._validate_cookie_csrf(mode)
         return user, company, PurchaseService(request.env, user, company)
 
     @staticmethod
-    def _paging():
+    def _purchase_paging():
         return (
             max(int(request.httprequest.args.get("page", 1)), 1),
             min(max(int(request.httprequest.args.get("page_size", 20)), 1), 100),
         )
 
-    def _page_response(self, data, total, page, size, request_id):
+    def _purchase_page_response(self, data, total, page, size, request_id):
         return self._response(
             data,
             meta={
@@ -32,17 +32,17 @@ class PurchaseController(BrewApiController):
         )
 
     @http.route("/api/v1/purchase-requisitions", type="http", auth="public", methods=["GET", "POST"], csrf=False)
-    def requisitions(self):
+    def purchase_requisitions(self):
         request_id = self._request_id()
         try:
             mutation = request.httprequest.method == "POST"
-            user, company, service = self._context(mutation)
+            user, company, service = self._purchase_context(mutation)
             if not mutation:
-                page, size = self._paging()
+                page, size = self._purchase_paging()
                 data, total = service.requisitions(
                     page, size, request.httprequest.args.get("state")
                 )
-                return self._page_response(data, total, page, size, request_id)
+                return self._purchase_page_response(data, total, page, size, request_id)
             payload = self._json_body()
             idem, replay = self._start_idempotency(user, company, payload)
             if replay:
@@ -58,7 +58,7 @@ class PurchaseController(BrewApiController):
         request_id = self._request_id()
         try:
             payload = self._json_body()
-            user, company, service = self._context(True)
+            user, company, service = self._purchase_context(True)
             idem, replay = self._start_idempotency(user, company, payload)
             if replay:
                 return replay
@@ -69,13 +69,13 @@ class PurchaseController(BrewApiController):
             return self._error_response(exc, request_id)
 
     @http.route("/api/v1/purchase-requisitions/<int:record_id>/<string:action>", type="http", auth="public", methods=["POST"], csrf=False)
-    def requisition_action(self, record_id, action):
+    def purchase_requisition_action(self, record_id, action):
         request_id = self._request_id()
         try:
             if action not in {"submit", "approve", "return"}:
                 raise ApiError("RESOURCE_NOT_FOUND", "采购需求动作不存在。", 404)
             payload = self._json_body()
-            user, company, service = self._context(True)
+            user, company, service = self._purchase_context(True)
             idem, replay = self._start_idempotency(user, company, payload)
             if replay:
                 return replay
@@ -90,7 +90,7 @@ class PurchaseController(BrewApiController):
         request_id = self._request_id()
         try:
             payload = self._json_body()
-            user, company, service = self._context(True)
+            user, company, service = self._purchase_context(True)
             idem, replay = self._start_idempotency(user, company, payload)
             if replay:
                 return replay
@@ -105,13 +105,13 @@ class PurchaseController(BrewApiController):
         request_id = self._request_id()
         try:
             mutation = request.httprequest.method == "POST"
-            user, company, service = self._context(mutation)
+            user, company, service = self._purchase_context(mutation)
             if not mutation:
-                page, size = self._paging()
+                page, size = self._purchase_paging()
                 data, total = service.orders(
                     page, size, request.httprequest.args.get("state")
                 )
-                return self._page_response(data, total, page, size, request_id)
+                return self._purchase_page_response(data, total, page, size, request_id)
             payload = self._json_body()
             idem, replay = self._start_idempotency(user, company, payload)
             if replay:
@@ -127,7 +127,7 @@ class PurchaseController(BrewApiController):
         request_id = self._request_id()
         try:
             mutation = request.httprequest.method == "PATCH"
-            user, company, service = self._context(mutation)
+            user, company, service = self._purchase_context(mutation)
             if not mutation:
                 order = service._record("purchase.order", order_id, "brew_factory_id")
                 return self._response(service._serialize_order(order), request_id=request_id)
@@ -148,7 +148,7 @@ class PurchaseController(BrewApiController):
             if action not in {"submit", "approve", "place", "close"}:
                 raise ApiError("RESOURCE_NOT_FOUND", "采购订单动作不存在。", 404)
             payload = self._json_body()
-            user, company, service = self._context(True)
+            user, company, service = self._purchase_context(True)
             idem, replay = self._start_idempotency(user, company, payload)
             if replay:
                 return replay
@@ -163,7 +163,7 @@ class PurchaseController(BrewApiController):
         request_id = self._request_id()
         try:
             payload = self._json_body()
-            user, company, service = self._context(True)
+            user, company, service = self._purchase_context(True)
             idem, replay = self._start_idempotency(user, company, payload)
             if replay:
                 return replay
@@ -178,13 +178,13 @@ class PurchaseController(BrewApiController):
         request_id = self._request_id()
         try:
             mutation = request.httprequest.method == "POST"
-            user, company, service = self._context(mutation)
+            user, company, service = self._purchase_context(mutation)
             if not mutation:
-                page, size = self._paging()
+                page, size = self._purchase_paging()
                 data, total = service.receipts(
                     page, size, request.httprequest.args.get("state")
                 )
-                return self._page_response(data, total, page, size, request_id)
+                return self._purchase_page_response(data, total, page, size, request_id)
             payload = self._json_body()
             idem, replay = self._start_idempotency(user, company, payload)
             if replay:
@@ -202,7 +202,7 @@ class PurchaseController(BrewApiController):
             if action not in {"confirm-arrival", "put-away"}:
                 raise ApiError("RESOURCE_NOT_FOUND", "收货动作不存在。", 404)
             payload = self._json_body()
-            user, company, service = self._context(True)
+            user, company, service = self._purchase_context(True)
             idem, replay = self._start_idempotency(user, company, payload)
             if replay:
                 return replay
@@ -217,13 +217,13 @@ class PurchaseController(BrewApiController):
         request_id = self._request_id()
         try:
             mutation = request.httprequest.method == "POST"
-            user, company, service = self._context(mutation)
+            user, company, service = self._purchase_context(mutation)
             if not mutation:
-                page, size = self._paging()
+                page, size = self._purchase_paging()
                 data, total = service.inspections(
                     page, size, request.httprequest.args.get("state")
                 )
-                return self._page_response(data, total, page, size, request_id)
+                return self._purchase_page_response(data, total, page, size, request_id)
             payload = self._json_body()
             idem, replay = self._start_idempotency(user, company, payload)
             if replay:
@@ -238,7 +238,7 @@ class PurchaseController(BrewApiController):
         request_id = self._request_id()
         try:
             payload = self._json_body()
-            user, company, service = self._context(True)
+            user, company, service = self._purchase_context(True)
             idem, replay = self._start_idempotency(user, company, payload)
             if replay:
                 return replay
@@ -255,7 +255,7 @@ class PurchaseController(BrewApiController):
             if action not in {"pass", "reject"}:
                 raise ApiError("RESOURCE_NOT_FOUND", "质检动作不存在。", 404)
             payload = self._json_body()
-            user, company, service = self._context(True)
+            user, company, service = self._purchase_context(True)
             idem, replay = self._start_idempotency(user, company, payload)
             if replay:
                 return replay

@@ -13,26 +13,26 @@ ACTION_ROUTES = [
 
 
 class ConfigurationController(BrewApiController):
-    def _resource(self):
+    def _configuration_resource(self):
         parts = request.httprequest.path.strip("/").split("/")
         resource = parts[3] if len(parts) > 3 else ""
         if resource not in RULE_PATHS:
             raise ApiError("RESOURCE_NOT_FOUND", "规则资源不存在。", 404)
         return resource
 
-    def _context(self, mutation=False):
+    def _configuration_context(self, mutation=False):
         user, company, _session, auth_mode = self._authenticate()
         if mutation:
             self._validate_cookie_csrf(auth_mode)
         return user, company, ConfigurationRuleService(request.env, user, company)
 
     @http.route(COLLECTION_ROUTES, type="http", auth="public", methods=["GET", "POST"], csrf=False)
-    def collection(self):
+    def configuration_collection(self):
         request_id = self._request_id()
         try:
-            resource = self._resource()
+            resource = self._configuration_resource()
             mutation = request.httprequest.method == "POST"
-            user, company, service = self._context(mutation)
+            user, company, service = self._configuration_context(mutation)
             if not mutation:
                 page = max(int(request.httprequest.args.get("page", 1)), 1)
                 page_size = min(max(int(request.httprequest.args.get("page_size", 20)), 1), 100)
@@ -55,12 +55,12 @@ class ConfigurationController(BrewApiController):
             return self._error_response(exc, request_id)
 
     @http.route(ITEM_ROUTES, type="http", auth="public", methods=["GET", "PATCH"], csrf=False)
-    def item(self, record_id):
+    def configuration_item(self, record_id):
         request_id = self._request_id()
         try:
-            resource = self._resource()
+            resource = self._configuration_resource()
             mutation = request.httprequest.method == "PATCH"
-            user, company, service = self._context(mutation)
+            user, company, service = self._configuration_context(mutation)
             if not mutation:
                 return self._response(service.serialize(service._record(resource, record_id)), request_id=request_id)
             payload = self._json_body()
@@ -74,12 +74,12 @@ class ConfigurationController(BrewApiController):
             return self._error_response(exc, request_id)
 
     @http.route(ACTION_ROUTES, type="http", auth="public", methods=["POST"], csrf=False)
-    def action(self, record_id, action):
+    def configuration_action(self, record_id, action):
         request_id = self._request_id()
         try:
-            resource = self._resource()
+            resource = self._configuration_resource()
             payload = self._json_body()
-            user, company, service = self._context(True)
+            user, company, service = self._configuration_context(True)
             idem, replay = self._start_idempotency(user, company, payload)
             if replay:
                 return replay

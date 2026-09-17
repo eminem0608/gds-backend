@@ -6,7 +6,7 @@ from .base import BrewApiController
 
 
 class ImportController(BrewApiController):
-    def _context(self, mutation=False):
+    def _import_context(self, mutation=False):
         user, company, _session, auth_mode = self._authenticate()
         if mutation:
             self._validate_cookie_csrf(auth_mode)
@@ -16,7 +16,7 @@ class ImportController(BrewApiController):
     def template(self):
         request_id = self._request_id()
         try:
-            _user, _company, service = self._context()
+            _user, _company, service = self._import_context()
             return self._response(
                 service.template(request.httprequest.args.get("resource")), request_id=request_id
             )
@@ -28,7 +28,7 @@ class ImportController(BrewApiController):
         request_id = self._request_id()
         try:
             payload = self._json_body()
-            user, company, service = self._context(True)
+            user, company, service = self._import_context(True)
             idem, replay = self._start_idempotency(user, company, payload)
             if replay:
                 return replay
@@ -43,7 +43,7 @@ class ImportController(BrewApiController):
         request_id = self._request_id()
         try:
             payload = self._json_body()
-            user, company, service = self._context(True)
+            user, company, service = self._import_context(True)
             idem, replay = self._start_idempotency(user, company, payload)
             if replay:
                 return replay
@@ -57,7 +57,7 @@ class ImportController(BrewApiController):
     def report(self, batch_id):
         request_id = self._request_id()
         try:
-            _user, _company, service = self._context()
+            _user, _company, service = self._import_context()
             return self._response(service.report(batch_id), request_id=request_id)
         except Exception as exc:
             return self._error_response(exc, request_id)
@@ -67,7 +67,7 @@ class ImportController(BrewApiController):
         request_id = self._request_id()
         try:
             payload = self._json_body()
-            user, company, service = self._context(True)
+            user, company, service = self._import_context(True)
             idem, replay = self._start_idempotency(user, company, payload)
             if replay:
                 return replay

@@ -6,20 +6,20 @@ from .base import ApiError, BrewApiController
 
 
 class InventoryController(BrewApiController):
-    def _context(self, mutation=False):
+    def _inventory_context(self, mutation=False):
         user, company, _session, mode = self._authenticate()
         if mutation:
             self._validate_cookie_csrf(mode)
         return user, company, InventoryService(request.env, user, company)
 
     @staticmethod
-    def _paging():
+    def _inventory_paging():
         page = max(int(request.httprequest.args.get("page", 1)), 1)
         size = min(max(int(request.httprequest.args.get("page_size", 20)), 1), 100)
         return page, size
 
-    def _list_response(self, service_method, request_id, **filters):
-        page, size = self._paging()
+    def _inventory_list_response(self, service_method, request_id, **filters):
+        page, size = self._inventory_paging()
         data, total = service_method(page, size, filters)
         return self._response(
             data,
@@ -36,7 +36,7 @@ class InventoryController(BrewApiController):
     def summary(self):
         request_id = self._request_id()
         try:
-            _user, _company, service = self._context()
+            _user, _company, service = self._inventory_context()
             return self._response(
                 service.summary(
                     request.httprequest.args.get("factory_id"),
@@ -51,7 +51,7 @@ class InventoryController(BrewApiController):
     def lots(self):
         request_id = self._request_id()
         try:
-            _user, _company, service = self._context()
+            _user, _company, service = self._inventory_context()
             filters = {
                 key: request.httprequest.args.get(key)
                 for key in [
@@ -63,7 +63,7 @@ class InventoryController(BrewApiController):
                 ]
                 if request.httprequest.args.get(key) is not None
             }
-            return self._list_response(service.lots, request_id, **filters)
+            return self._inventory_list_response(service.lots, request_id, **filters)
         except Exception as exc:
             return self._error_response(exc, request_id)
 
@@ -71,7 +71,7 @@ class InventoryController(BrewApiController):
     def lot(self, lot_id):
         request_id = self._request_id()
         try:
-            _user, _company, service = self._context()
+            _user, _company, service = self._inventory_context()
             return self._response(service.lot_detail(lot_id), request_id=request_id)
         except Exception as exc:
             return self._error_response(exc, request_id)
@@ -83,7 +83,7 @@ class InventoryController(BrewApiController):
             if action not in {"freeze", "unfreeze"}:
                 raise ApiError("RESOURCE_NOT_FOUND", "批次动作不存在。", 404)
             payload = self._json_body()
-            user, company, service = self._context(True)
+            user, company, service = self._inventory_context(True)
             idem, replay = self._start_idempotency(user, company, payload)
             if replay:
                 return replay
@@ -106,13 +106,13 @@ class InventoryController(BrewApiController):
     def movements(self):
         request_id = self._request_id()
         try:
-            _user, _company, service = self._context()
+            _user, _company, service = self._inventory_context()
             filters = {
                 key: request.httprequest.args.get(key)
                 for key in ["factory_id", "location_id", "product_id", "lot_id"]
                 if request.httprequest.args.get(key)
             }
-            return self._list_response(service.movements, request_id, **filters)
+            return self._inventory_list_response(service.movements, request_id, **filters)
         except Exception as exc:
             return self._error_response(exc, request_id)
 
@@ -120,13 +120,13 @@ class InventoryController(BrewApiController):
     def reservations(self):
         request_id = self._request_id()
         try:
-            _user, _company, service = self._context()
+            _user, _company, service = self._inventory_context()
             filters = {
                 key: request.httprequest.args.get(key)
                 for key in ["state", "source_model", "source_id"]
                 if request.httprequest.args.get(key)
             }
-            return self._list_response(service.reservations, request_id, **filters)
+            return self._inventory_list_response(service.reservations, request_id, **filters)
         except Exception as exc:
             return self._error_response(exc, request_id)
 
@@ -135,9 +135,9 @@ class InventoryController(BrewApiController):
         request_id = self._request_id()
         try:
             mutation = request.httprequest.method == "POST"
-            user, company, service = self._context(mutation)
+            user, company, service = self._inventory_context(mutation)
             if not mutation:
-                page, size = self._paging()
+                page, size = self._inventory_paging()
                 data, total = service.transfers(
                     page, size, request.httprequest.args.get("state")
                 )
@@ -166,7 +166,7 @@ class InventoryController(BrewApiController):
         request_id = self._request_id()
         try:
             payload = self._json_body()
-            user, company, service = self._context(True)
+            user, company, service = self._inventory_context(True)
             idem, replay = self._start_idempotency(user, company, payload)
             if replay:
                 return replay
@@ -181,9 +181,9 @@ class InventoryController(BrewApiController):
         request_id = self._request_id()
         try:
             mutation = request.httprequest.method == "POST"
-            user, company, service = self._context(mutation)
+            user, company, service = self._inventory_context(mutation)
             if not mutation:
-                page, size = self._paging()
+                page, size = self._inventory_paging()
                 data, total = service.counts(
                     page, size, request.httprequest.args.get("state")
                 )
@@ -207,7 +207,7 @@ class InventoryController(BrewApiController):
         request_id = self._request_id()
         try:
             payload = self._json_body()
-            user, company, service = self._context(True)
+            user, company, service = self._inventory_context(True)
             idem, replay = self._start_idempotency(user, company, payload)
             if replay:
                 return replay
@@ -224,7 +224,7 @@ class InventoryController(BrewApiController):
             if action not in {"start", "submit", "confirm"}:
                 raise ApiError("RESOURCE_NOT_FOUND", "盘点动作不存在。", 404)
             payload = self._json_body()
-            user, company, service = self._context(True)
+            user, company, service = self._inventory_context(True)
             idem, replay = self._start_idempotency(user, company, payload)
             if replay:
                 return replay
@@ -239,9 +239,9 @@ class InventoryController(BrewApiController):
         request_id = self._request_id()
         try:
             mutation = request.httprequest.method == "POST"
-            user, company, service = self._context(mutation)
+            user, company, service = self._inventory_context(mutation)
             if not mutation:
-                page, size = self._paging()
+                page, size = self._inventory_paging()
                 data, total = service.scraps(
                     page, size, request.httprequest.args.get("state")
                 )
@@ -265,7 +265,7 @@ class InventoryController(BrewApiController):
         request_id = self._request_id()
         try:
             payload = self._json_body()
-            user, company, service = self._context(True)
+            user, company, service = self._inventory_context(True)
             idem, replay = self._start_idempotency(user, company, payload)
             if replay:
                 return replay

@@ -6,31 +6,31 @@ from .base import ApiError, BrewApiController
 
 
 class FermentationController(BrewApiController):
-    def _context(self, mutation=False):
+    def _fermentation_context(self, mutation=False):
         user, company, _session, mode = self._authenticate()
         if mutation:
             self._validate_cookie_csrf(mode)
         return user, company, FermentationService(request.env, user, company)
 
     @staticmethod
-    def _paging():
+    def _fermentation_paging():
         return (
             max(int(request.httprequest.args.get("page", 1)), 1),
             min(max(int(request.httprequest.args.get("page_size", 20)), 1), 100),
         )
 
-    def _page_response(self, data, total, page, size, request_id):
+    def _fermentation_page_response(self, data, total, page, size, request_id):
         return self._response(
             data,
             meta={"page": page, "page_size": size, "total": total, "has_more": page * size < total},
             request_id=request_id,
         )
 
-    def _command(self, event_type, action, handler):
+    def _fermentation_command(self, event_type, action, handler):
         request_id = self._request_id()
         try:
             payload = self._json_body()
-            user, company, service = self._context(True)
+            user, company, service = self._fermentation_context(True)
             idem, replay = self._start_idempotency(user, company, payload)
             if replay:
                 return replay
@@ -44,15 +44,15 @@ class FermentationController(BrewApiController):
     def tanks(self):
         request_id = self._request_id()
         try:
-            _user, _company, service = self._context()
-            page, size = self._paging()
+            _user, _company, service = self._fermentation_context()
+            page, size = self._fermentation_paging()
             filters = {
                 key: request.httprequest.args.get(key)
                 for key in ["factory_id", "status"]
                 if request.httprequest.args.get(key)
             }
             data, total = service.tanks(page, size, filters)
-            return self._page_response(data, total, page, size, request_id)
+            return self._fermentation_page_response(data, total, page, size, request_id)
         except Exception as exc:
             return self._error_response(exc, request_id)
 
@@ -60,7 +60,7 @@ class FermentationController(BrewApiController):
     def tank(self, tank_id):
         request_id = self._request_id()
         try:
-            _user, _company, service = self._context()
+            _user, _company, service = self._fermentation_context()
             return self._response(service.tank_detail(tank_id), request_id=request_id)
         except Exception as exc:
             return self._error_response(exc, request_id)
@@ -69,14 +69,14 @@ class FermentationController(BrewApiController):
     def tank_timeline(self, tank_id):
         request_id = self._request_id()
         try:
-            _user, _company, service = self._context()
+            _user, _company, service = self._fermentation_context()
             return self._response(service.tank_timeline(tank_id), request_id=request_id)
         except Exception as exc:
             return self._error_response(exc, request_id)
 
     @http.route("/api/v1/fermentation-sessions/<int:session_id>/add-yeast", type="http", auth="public", methods=["POST"], csrf=False)
     def add_yeast(self, session_id):
-        return self._command(
+        return self._fermentation_command(
             "fermentation_session",
             "add_yeast",
             lambda service, payload: (
@@ -86,7 +86,7 @@ class FermentationController(BrewApiController):
 
     @http.route("/api/v1/fermentation-sessions/<int:session_id>/actions", type="http", auth="public", methods=["POST"], csrf=False)
     def session_action(self, session_id):
-        return self._command(
+        return self._fermentation_command(
             "fermentation_session",
             "action",
             lambda service, payload: (
@@ -96,7 +96,7 @@ class FermentationController(BrewApiController):
 
     @http.route("/api/v1/fermentation-sessions/<int:session_id>/transfer", type="http", auth="public", methods=["POST"], csrf=False)
     def transfer(self, session_id):
-        return self._command(
+        return self._fermentation_command(
             "fermentation_session",
             "transfer",
             lambda service, payload: service.transfer(session_id, payload),
@@ -104,7 +104,7 @@ class FermentationController(BrewApiController):
 
     @http.route("/api/v1/fermentation-sessions/<int:session_id>/complete", type="http", auth="public", methods=["POST"], csrf=False)
     def complete(self, session_id):
-        return self._command(
+        return self._fermentation_command(
             "fermentation_session",
             "complete",
             lambda service, payload: service.complete_session(session_id, payload),
@@ -115,11 +115,11 @@ class FermentationController(BrewApiController):
         request_id = self._request_id()
         try:
             mutation = request.httprequest.method == "POST"
-            user, company, service = self._context(mutation)
+            user, company, service = self._fermentation_context(mutation)
             if not mutation:
-                page, size = self._paging()
+                page, size = self._fermentation_paging()
                 data, total = service.readings(session_id, page, size)
-                return self._page_response(data, total, page, size, request_id)
+                return self._fermentation_page_response(data, total, page, size, request_id)
             payload = self._json_body()
             idem, replay = self._start_idempotency(user, company, payload)
             if replay:
@@ -137,7 +137,7 @@ class FermentationController(BrewApiController):
             return self._error_response(
                 ApiError("RESOURCE_NOT_FOUND", "发酵读数动作不存在。", 404), request_id
             )
-        return self._command(
+        return self._fermentation_command(
             "fermentation_reading",
             action,
             lambda service, payload: service.reading_action(reading_id, action, payload),
@@ -147,7 +147,7 @@ class FermentationController(BrewApiController):
     def trends(self, session_id):
         request_id = self._request_id()
         try:
-            _user, _company, service = self._context()
+            _user, _company, service = self._fermentation_context()
             return self._response(service.trends(session_id), request_id=request_id)
         except Exception as exc:
             return self._error_response(exc, request_id)
@@ -156,15 +156,15 @@ class FermentationController(BrewApiController):
     def anomalies(self):
         request_id = self._request_id()
         try:
-            _user, _company, service = self._context()
-            page, size = self._paging()
+            _user, _company, service = self._fermentation_context()
+            page, size = self._fermentation_paging()
             filters = {
                 key: request.httprequest.args.get(key)
                 for key in ["state", "severity"]
                 if request.httprequest.args.get(key)
             }
             data, total = service.anomalies(page, size, filters)
-            return self._page_response(data, total, page, size, request_id)
+            return self._fermentation_page_response(data, total, page, size, request_id)
         except Exception as exc:
             return self._error_response(exc, request_id)
 
@@ -175,7 +175,7 @@ class FermentationController(BrewApiController):
             return self._error_response(
                 ApiError("RESOURCE_NOT_FOUND", "异常动作不存在。", 404), request_id
             )
-        return self._command(
+        return self._fermentation_command(
             "production_anomaly",
             action,
             lambda service, payload: service.anomaly_action(anomaly_id, action, payload),

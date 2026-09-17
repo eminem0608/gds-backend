@@ -8,24 +8,24 @@ from .base import BrewApiController
 
 
 class ReportingController(BrewApiController):
-    def _context(self, mutation=False):
+    def _reporting_context(self, mutation=False):
         user, company, _session, mode = self._authenticate()
         if mutation:
             self._validate_cookie_csrf(mode)
         return user, company, ReportingService(request.env, user, company)
 
     @staticmethod
-    def _paging():
+    def _reporting_paging():
         return max(int(request.httprequest.args.get("page", 1)), 1), min(max(int(request.httprequest.args.get("page_size", 20)), 1), 100)
 
-    def _page(self, data, total, page, size, request_id):
+    def _reporting_page(self, data, total, page, size, request_id):
         return self._response(data, meta={"page": page, "page_size": size, "total": total, "has_more": page * size < total}, request_id=request_id)
 
     @http.route("/api/v1/dashboard/overview", type="http", auth="public", methods=["GET"], csrf=False)
     def dashboard(self):
         request_id = self._request_id()
         try:
-            _user, _company, service = self._context()
+            _user, _company, service = self._reporting_context()
             return self._response(service.dashboard(request.httprequest.args.get("factory_id")), request_id=request_id)
         except Exception as exc:
             return self._error_response(exc, request_id)
@@ -34,7 +34,7 @@ class ReportingController(BrewApiController):
     def report_summary(self):
         request_id = self._request_id()
         try:
-            _user, _company, service = self._context()
+            _user, _company, service = self._reporting_context()
             return self._response(service.report_summary(request.httprequest.args.get("factory_id")), request_id=request_id)
         except Exception as exc:
             return self._error_response(exc, request_id)
@@ -43,10 +43,10 @@ class ReportingController(BrewApiController):
     def exports(self):
         request_id = self._request_id()
         try:
-            mutation = request.httprequest.method == "POST"; user, company, service = self._context(mutation)
+            mutation = request.httprequest.method == "POST"; user, company, service = self._reporting_context(mutation)
             if not mutation:
-                page, size = self._paging(); data, total = service.exports(page, size)
-                return self._page(data, total, page, size, request_id)
+                page, size = self._reporting_paging(); data, total = service.exports(page, size)
+                return self._reporting_page(data, total, page, size, request_id)
             payload = self._json_body(); idem, replay = self._start_idempotency(user, company, payload)
             if replay: return replay
             record, data = service.create_export(payload)
@@ -59,7 +59,7 @@ class ReportingController(BrewApiController):
     def export_detail(self, record_id):
         request_id = self._request_id()
         try:
-            _user, _company, service = self._context(); record = service.export_record(record_id)
+            _user, _company, service = self._reporting_context(); record = service.export_record(record_id)
             return self._response(service._serialize_export(record), request_id=request_id)
         except Exception as exc:
             return self._error_response(exc, request_id)
@@ -68,7 +68,7 @@ class ReportingController(BrewApiController):
     def export_download(self, record_id):
         request_id = self._request_id()
         try:
-            _user, _company, service = self._context(); record = service.export_record(record_id)
+            _user, _company, service = self._reporting_context(); record = service.export_record(record_id)
             if record.state != "done" or not record.attachment_id:
                 from .base import ApiError
                 raise ApiError("EXPORT_NOT_READY", "Export file is not ready.", 409)
@@ -85,9 +85,9 @@ class ReportingController(BrewApiController):
     def notifications(self):
         request_id = self._request_id()
         try:
-            _user, _company, service = self._context(); page, size = self._paging()
+            _user, _company, service = self._reporting_context(); page, size = self._reporting_paging()
             data, total = service.notifications(page, size, request.httprequest.args.get("unread_only") == "true")
-            return self._page(data, total, page, size, request_id)
+            return self._reporting_page(data, total, page, size, request_id)
         except Exception as exc:
             return self._error_response(exc, request_id)
 
@@ -95,7 +95,7 @@ class ReportingController(BrewApiController):
     def notification_read(self, record_id):
         request_id = self._request_id()
         try:
-            payload = self._json_body(); user, company, service = self._context(True)
+            payload = self._json_body(); user, company, service = self._reporting_context(True)
             idem, replay = self._start_idempotency(user, company, payload)
             if replay: return replay
             record, data = service.read_notification(record_id)
@@ -108,7 +108,7 @@ class ReportingController(BrewApiController):
     def notification_preferences(self):
         request_id = self._request_id()
         try:
-            mutation = request.httprequest.method == "PUT"; user, company, service = self._context(mutation)
+            mutation = request.httprequest.method == "PUT"; user, company, service = self._reporting_context(mutation)
             if not mutation:
                 return self._response(service.serialize_preference(service.preference()), request_id=request_id)
             payload = self._json_body(); idem, replay = self._start_idempotency(user, company, payload)
@@ -123,7 +123,7 @@ class ReportingController(BrewApiController):
     def operations_metrics(self):
         request_id = self._request_id()
         try:
-            _user, _company, service = self._context()
+            _user, _company, service = self._reporting_context()
             return self._response(service.operations_metrics(), request_id=request_id)
         except Exception as exc:
             return self._error_response(exc, request_id)

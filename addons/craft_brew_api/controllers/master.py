@@ -13,26 +13,26 @@ ACTION_ROUTES = [
 
 
 class MasterDataController(BrewApiController):
-    def _resource(self):
+    def _master_resource(self):
         parts = request.httprequest.path.strip("/").split("/")
         resource = parts[2] if len(parts) > 2 else ""
         if resource not in RESOURCE_CONFIG:
             raise ApiError("RESOURCE_NOT_FOUND", "主数据资源不存在。", 404)
         return resource
 
-    def _context(self, mutation=False):
+    def _master_context(self, mutation=False):
         user, company, _session, auth_mode = self._authenticate()
         if mutation:
             self._validate_cookie_csrf(auth_mode)
         return user, company, MasterDataService(request.env, user, company)
 
     @http.route(COLLECTION_ROUTES, type="http", auth="public", methods=["GET", "POST"], csrf=False)
-    def collection(self):
+    def master_collection(self):
         request_id = self._request_id()
         try:
-            resource = self._resource()
+            resource = self._master_resource()
             mutation = request.httprequest.method == "POST"
-            user, company, service = self._context(mutation=mutation)
+            user, company, service = self._master_context(mutation=mutation)
             if not mutation:
                 page = max(int(request.httprequest.args.get("page", 1)), 1)
                 page_size = min(max(int(request.httprequest.args.get("page_size", 20)), 1), 100)
@@ -64,12 +64,12 @@ class MasterDataController(BrewApiController):
             return self._error_response(exc, request_id)
 
     @http.route(ITEM_ROUTES, type="http", auth="public", methods=["GET", "PATCH"], csrf=False)
-    def item(self, record_id):
+    def master_item(self, record_id):
         request_id = self._request_id()
         try:
-            resource = self._resource()
+            resource = self._master_resource()
             mutation = request.httprequest.method == "PATCH"
-            user, company, service = self._context(mutation=mutation)
+            user, company, service = self._master_context(mutation=mutation)
             if not mutation:
                 return self._response(service.get(resource, record_id), request_id=request_id)
             payload = self._json_body()
@@ -94,11 +94,11 @@ class MasterDataController(BrewApiController):
     def archive_restore(self, record_id, action):
         request_id = self._request_id()
         try:
-            resource = self._resource()
+            resource = self._master_resource()
             if action not in {"archive", "restore"}:
                 raise ApiError("RESOURCE_NOT_FOUND", "主数据动作不存在。", 404)
             payload = self._json_body()
-            user, company, service = self._context(mutation=True)
+            user, company, service = self._master_context(mutation=True)
             service.ensure_write_access(resource)
             idem, replay = self._start_idempotency(user, company, payload)
             if replay:
@@ -129,7 +129,7 @@ class MasterDataController(BrewApiController):
         request_id = self._request_id()
         try:
             mutation = request.httprequest.method == "POST"
-            user, company, service = self._context(mutation)
+            user, company, service = self._master_context(mutation)
             if not mutation:
                 return self._response(service.list_unavailability(record_id), request_id=request_id)
             payload = self._json_body()
@@ -153,7 +153,7 @@ class MasterDataController(BrewApiController):
         request_id = self._request_id()
         try:
             payload = self._json_body()
-            user, company, service = self._context(True)
+            user, company, service = self._master_context(True)
             idem, replay = self._start_idempotency(user, company, payload)
             if replay:
                 return replay
