@@ -20,11 +20,13 @@ class BrewRecipe(models.Model):
     )
     product_tmpl_id = fields.Many2one(
         "product.template",
-        required=True,
+        required=False,
         check_company=True,
         domain="[('brew_item_type', '=', 'finished_product')]",
     )
     beer_style = fields.Char()
+    beer_category_id = fields.Many2one("brew.beer.category", string="啤酒大类", ondelete="restrict", index=True)
+    beer_subcategory_id = fields.Many2one("brew.beer.category", string="啤酒小类", ondelete="restrict", index=True)
     description = fields.Text()
     version_ids = fields.One2many("brew.recipe.version", "recipe_id")
     active_version_id = fields.Many2one(
@@ -94,6 +96,7 @@ class BrewRecipeVersion(models.Model):
     approved_at = fields.Datetime()
     return_reason = fields.Text()
     notes = fields.Text()
+    design_json = fields.Text(default="{}")
 
     _sql_constraints = [
         ("recipe_version_unique", "unique(recipe_id, version)", "配方版本号必须唯一。"),
@@ -111,6 +114,7 @@ class BrewRecipeVersion(models.Model):
         "color_ebc",
         "alcohol_abv",
         "notes",
+        "design_json",
     }
 
     def write(self, values):

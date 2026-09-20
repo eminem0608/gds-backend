@@ -12,8 +12,11 @@ class RecipeService:
         self.company = company
 
     def ensure_manage(self):
-        if not self.user.has_group("craft_brew_core.group_brew_production_director"):
-            raise ApiError("PERMISSION_DENIED", "只有生产总监可以维护配方版本。", 403)
+        if not (
+            self.user.has_group("craft_brew_core.group_brew_production_director")
+            or self.user.has_group("craft_brew_core.group_brew_admin")
+        ):
+            raise ApiError("PERMISSION_DENIED", "当前账号无权维护配方版本。", 403)
 
     def _recipe(self, recipe_id, include_archived=True):
         recipe = self.env["brew.recipe"].sudo().with_context(active_test=not include_archived).search(
@@ -41,8 +44,10 @@ class RecipeService:
             "id": str(recipe.id),
             "code": recipe.code,
             "name": recipe.name,
-            "product": {"id": str(recipe.product_tmpl_id.id), "name": recipe.product_tmpl_id.display_name},
+            "product": {"id": str(recipe.product_tmpl_id.id), "name": recipe.product_tmpl_id.display_name} if recipe.product_tmpl_id else None,
             "beer_style": recipe.beer_style,
+            "beer_category": {"id": str(recipe.beer_category_id.id), "name": recipe.beer_category_id.name} if recipe.beer_category_id else None,
+            "beer_subcategory": {"id": str(recipe.beer_subcategory_id.id), "name": recipe.beer_subcategory_id.name} if recipe.beer_subcategory_id else None,
             "description": recipe.description,
             "active_version_id": str(recipe.active_version_id.id) if recipe.active_version_id else None,
             "active": recipe.active,
@@ -65,6 +70,7 @@ class RecipeService:
             "estimated_cost": version.estimated_cost,
             "currency": version.currency_id.name,
             "notes": version.notes,
+            "design": json.loads(version.design_json or "{}"),
             "return_reason": version.return_reason,
             "submitted_at": version.submitted_at.isoformat() if version.submitted_at else None,
             "approved_at": version.approved_at.isoformat() if version.approved_at else None,
@@ -120,11 +126,25 @@ class RecipeService:
         product = self.env["product.template"].sudo().search(
             [("id", "=", int(product_id or 0)), ("company_id", "=", self.company.id), ("brew_item_type", "=", "finished_product")],
             limit=1,
-        )
-        if not name or not code or not product:
-            raise ApiError("VALIDATION_REQUIRED", "名称、编码和当前企业成品不能为空。", 422)
+        ) if product_id else False
+        if not name:
+            raise ApiError("VALIDATION_REQUIRED", "配方名称不能为空。", 422)
+        if not code:
+            prefix = "".join(ch for ch in (product.name if product else name) if ch.isalnum())[:3].upper() or "BEER"
+            code = f"{prefix}-{product.id if product else 'RCP'}-1-1"
+            suffix = 1
+            while self.env["brew.recipe"].sudo().search_count([("company_id", "=", self.company.id), ("code", "=", code)]):
+                suffix += 1
+                code = f"{prefix}-{product.id}-1-{suffix}"
+        category_id = int(payload.get("beer_category_id") or 0)
+        subcategory_id = int(payload.get("beer_subcategory_id") or 0)
+        category_model = self.env["brew.beer.category"].sudo()
+        category = category_model.search([("id", "=", category_id), ("active", "=", True)], limit=1) if category_id else False
+        subcategory = category_model.search([("id", "=", subcategory_id), ("active", "=", True)], limit=1) if subcategory_id else False
+        if not category or not subcategory or subcategory.parent_id != category:
+            raise ApiError("VALIDATION_REQUIRED", "请选择有效的啤酒大类和对应小类。", 422)
         recipe = self.env["brew.recipe"].sudo().create(
-            {"name": name, "code": code, "company_id": self.company.id, "product_tmpl_id": product.id, "beer_style": payload.get("beer_style"), "description": payload.get("description")}
+            {"name": name, "code": code, "company_id": self.company.id, "product_tmpl_id": product.id if product else False, "beer_style": payload.get("beer_style"), "beer_category_id": category.id, "beer_subcategory_id": subcategory.id, "description": payload.get("description")}
         )
         return recipe, self.serialize_recipe(recipe)
 
@@ -133,6 +153,12 @@ class RecipeService:
         recipe = self._recipe(recipe_id)
         self._check_version(recipe, payload.get("version"))
         values = {key: payload[key] for key in {"name", "beer_style", "description"} if key in payload}
+        if "beer_category_id" in payload or "beer_subcategory_id" in payload:
+            category = self.env["brew.beer.category"].sudo().browse(int(payload.get("beer_category_id") or recipe.beer_category_id.id))
+            subcategory = self.env["brew.beer.category"].sudo().browse(int(payload.get("beer_subcategory_id") or recipe.beer_subcategory_id.id))
+            if not category.exists() or not subcategory.exists() or subcategory.parent_id != category:
+                raise ApiError("VALIDATION_REQUIRED", "请选择有效的啤酒大类和对应小类。", 422)
+            values.update({"beer_category_id": category.id, "beer_subcategory_id": subcategory.id})
         if not values:
             raise ApiError("VALIDATION_REQUIRED", "没有可更新的字段。", 422)
         recipe.write(values)
@@ -157,6 +183,7 @@ class RecipeService:
                 "color_ebc": payload.get("color_ebc"),
                 "alcohol_abv": payload.get("alcohol_abv"),
                 "notes": payload.get("notes"),
+                "design_json": json.dumps(payload.get("design") or {}, ensure_ascii=False, sort_keys=True),
             }
         )
         return version, self.serialize_version(version, True)
@@ -166,6 +193,8 @@ class RecipeService:
         version = self._version(version_id)
         self._check_version(version, payload.get("record_version"))
         values = {key: payload[key] for key in {"base_volume_l", "original_gravity", "final_gravity", "bitterness_ibu", "color_ebc", "alcohol_abv", "notes"} if key in payload}
+        if "design" in payload:
+            values["design_json"] = json.dumps(payload.get("design") or {}, ensure_ascii=False, sort_keys=True)
         if not values:
             raise ApiError("VALIDATION_REQUIRED", "没有可更新的字段。", 422)
         version.write(values)
@@ -180,10 +209,17 @@ class RecipeService:
             raise ApiError("VALIDATION_REQUIRED", "原料明细不能为空。", 422)
         commands = [Command.clear()]
         for index, item in enumerate(lines, start=1):
+            product_id = int(item.get("product_id") or 0)
             product = self.env["product.product"].sudo().search(
-                [("id", "=", int(item.get("product_id") or 0)), ("product_tmpl_id.company_id", "=", self.company.id), ("product_tmpl_id.brew_item_type", "in", ["raw_material", "packaging_material"])],
+                [("id", "=", product_id), ("product_tmpl_id.company_id", "=", self.company.id), ("product_tmpl_id.brew_item_type", "in", ["raw_material", "packaging_material"])],
                 limit=1,
             )
+            if not product:
+                template = self.env["product.template"].sudo().search(
+                    [("id", "=", product_id), ("company_id", "=", self.company.id), ("brew_item_type", "in", ["raw_material", "packaging_material"])],
+                    limit=1,
+                )
+                product = template.product_variant_id if template else product
             if not product:
                 raise ApiError("DATA_SCOPE_DENIED", "原料不属于当前企业。", 403)
             commands.append(Command.create({"sequence": int(item.get("sequence") or index * 10), "product_id": product.id, "quantity": float(item.get("quantity") or 0), "uom_id": int(item.get("uom_id") or product.uom_id.id), "stage": item.get("stage") or "mash", "notes": item.get("notes")}))

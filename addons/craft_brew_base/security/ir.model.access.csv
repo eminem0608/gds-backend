@@ -31,3 +31,8 @@ access_brew_import_batch_admin,brew.import.batch admin,model_brew_import_batch,c
 access_brew_import_line_admin,brew.import.line admin,model_brew_import_line,craft_brew_core.group_brew_admin,1,1,1,0
 access_equipment_unavailability_admin,brew.equipment.unavailability admin,model_brew_equipment_unavailability,craft_brew_core.group_brew_admin,1,1,1,0
 access_equipment_unavailability_director,brew.equipment.unavailability director,model_brew_equipment_unavailability,craft_brew_core.group_brew_production_director,1,1,1,0
+access_brew_material_category_admin,brew.material.category admin,model_brew_material_category,craft_brew_core.group_brew_admin,1,1,1,0
+access_brew_material_category_user,brew.material.category user,model_brew_material_category,base.group_user,1,0,0,0
+access_brew_beer_category_admin,brew.beer.category admin,model_brew_beer_category,craft_brew_core.group_brew_admin,1,1,1,0
+access_brew_beer_category_manager,brew.beer.category manager,model_brew_beer_category,craft_brew_core.group_brew_general_manager,1,1,1,0
+access_brew_beer_category_user,brew.beer.category user,model_brew_beer_category,base.group_user,1,0,0,0

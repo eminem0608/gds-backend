@@ -15,6 +15,7 @@ ROLE_DEFINITIONS = {
             "trace.batch.read",
             "report.all.read",
             "report.all.export",
+            "base.beer_category.manage",
         },
     },
     "production_director": {
@@ -124,6 +125,8 @@ ROLE_DEFINITIONS = {
             "admin.data_scope.assign",
             "base.master_data.manage",
             "admin.rule.manage",
+            "recipe.version.manage",
+            "recipe.version.approve",
             "admin.audit.read",
             "admin.integration.monitor",
         },
@@ -139,7 +142,7 @@ MENU_DEFINITIONS = (
         {"general_manager", "production_director", "operator", "warehouse_keeper"},
     ),
     ("production", "生产管理", {"general_manager", "production_director", "operator", "salesperson"}),
-    ("recipe", "配方工艺", {"general_manager", "production_director"}),
+    ("recipe", "配方工艺", {"general_manager", "production_director", "tenant_admin"}),
     (
         "inventory",
         "库存采购",

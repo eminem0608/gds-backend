@@ -1,0 +1,77 @@
+<odoo noupdate="1">
+    <record id="material_category_malt" model="brew.material.category">
+        <field name="name">麦芽</field><field name="code">malt</field><field name="material_group">malt</field><field name="sequence">10</field>
+    </record>
+    <record id="material_category_base_malt" model="brew.material.category">
+        <field name="name">基麦</field><field name="code">base_malt</field><field name="material_group">malt</field><field name="parent_id" ref="material_category_malt"/><field name="sequence">11</field>
+    </record>
+    <record id="material_category_caramel_malt" model="brew.material.category">
+        <field name="name">焦香麦芽</field><field name="code">caramel_malt</field><field name="material_group">malt</field><field name="parent_id" ref="material_category_malt"/><field name="sequence">12</field>
+    </record>
+    <record id="material_category_roasted_malt" model="brew.material.category">
+        <field name="name">烘焙麦芽</field><field name="code">roasted_malt</field><field name="material_group">malt</field><field name="parent_id" ref="material_category_malt"/><field name="sequence">13</field>
+    </record>
+    <record id="material_category_baked_malt" model="brew.material.category">
+        <field name="name">烘烤麦芽</field><field name="code">baked_malt</field><field name="material_group">malt</field><field name="parent_id" ref="material_category_malt"/><field name="sequence">14</field>
+    </record>
+    <record id="material_category_hop" model="brew.material.category">
+        <field name="name">啤酒花</field><field name="code">hop</field><field name="material_group">hop</field><field name="sequence">20</field>
+    </record>
+    <record id="material_category_yeast" model="brew.material.category">
+        <field name="name">酵母</field><field name="code">yeast</field><field name="material_group">yeast</field><field name="sequence">30</field>
+    </record>
+    <record id="material_category_adjunct" model="brew.material.category">
+        <field name="name">其他可发酵物</field><field name="code">adjunct</field><field name="material_group">adjunct</field><field name="sequence">40</field>
+    </record>
+    <record id="material_category_packaging" model="brew.material.category">
+        <field name="name">包装材料</field><field name="code">packaging</field><field name="material_group">packaging</field><field name="sequence">50</field>
+    </record>
+    <record id="material_category_american_hop" model="brew.material.category">
+        <field name="name">美式酒花</field><field name="code">american_hop</field><field name="material_group">hop</field><field name="parent_id" ref="material_category_hop"/><field name="sequence">21</field>
+    </record>
+    <record id="material_category_european_hop" model="brew.material.category">
+        <field name="name">欧式酒花</field><field name="code">european_hop</field><field name="material_group">hop</field><field name="parent_id" ref="material_category_hop"/><field name="sequence">22</field>
+    </record>
+    <record id="material_category_australian_hop" model="brew.material.category">
+        <field name="name">澳洲酒花</field><field name="code">australian_hop</field><field name="material_group">hop</field><field name="parent_id" ref="material_category_hop"/><field name="sequence">23</field>
+    </record>
+    <record id="material_category_bitter_hop" model="brew.material.category">
+        <field name="name">苦味花</field><field name="code">bitter_hop</field><field name="material_group">hop</field><field name="parent_id" ref="material_category_hop"/><field name="sequence">24</field>
+    </record>
+    <record id="material_category_american_ale_yeast" model="brew.material.category">
+        <field name="name">美式艾尔</field><field name="code">american_ale_yeast</field><field name="material_group">yeast</field><field name="parent_id" ref="material_category_yeast"/><field name="sequence">31</field>
+    </record>
+    <record id="material_category_german_ale_yeast" model="brew.material.category">
+        <field name="name">德式艾尔</field><field name="code">german_ale_yeast</field><field name="material_group">yeast</field><field name="parent_id" ref="material_category_yeast"/><field name="sequence">32</field>
+    </record>
+    <record id="material_category_english_ale_yeast" model="brew.material.category">
+        <field name="name">英式艾尔</field><field name="code">english_ale_yeast</field><field name="material_group">yeast</field><field name="parent_id" ref="material_category_yeast"/><field name="sequence">33</field>
+    </record>
+    <record id="material_category_hazy_ale_yeast" model="brew.material.category">
+        <field name="name">浑浊艾尔</field><field name="code">hazy_ale_yeast</field><field name="material_group">yeast</field><field name="parent_id" ref="material_category_yeast"/><field name="sequence">34</field>
+    </record>
+    <record id="material_category_lager_yeast" model="brew.material.category">
+        <field name="name">拉格</field><field name="code">lager_yeast</field><field name="material_group">yeast</field><field name="parent_id" ref="material_category_yeast"/><field name="sequence">35</field>
+    </record>
+    <record id="material_category_grain" model="brew.material.category">
+        <field name="name">谷物</field><field name="code">grain</field><field name="material_group">adjunct</field><field name="parent_id" ref="material_category_adjunct"/><field name="sequence">41</field>
+    </record>
+    <record id="material_category_sugar" model="brew.material.category">
+        <field name="name">糖原</field><field name="code">sugar</field><field name="material_group">adjunct</field><field name="parent_id" ref="material_category_adjunct"/><field name="sequence">42</field>
+    </record>
+    <record id="material_category_additive" model="brew.material.category">
+        <field name="name">添加剂</field><field name="code">additive</field><field name="material_group">adjunct</field><field name="parent_id" ref="material_category_adjunct"/><field name="sequence">43</field>
+    </record>
+    <record id="material_category_keg" model="brew.material.category">
+        <field name="name">桶</field><field name="code">keg</field><field name="material_group">packaging</field><field name="parent_id" ref="material_category_packaging"/><field name="sequence">51</field>
+    </record>
+    <record id="material_category_bottle" model="brew.material.category">
+        <field name="name">瓶</field><field name="code">bottle</field><field name="material_group">packaging</field><field name="parent_id" ref="material_category_packaging"/><field name="sequence">52</field>
+    </record>
+    <record id="material_category_can" model="brew.material.category">
+        <field name="name">易拉罐</field><field name="code">can</field><field name="material_group">packaging</field><field name="parent_id" ref="material_category_packaging"/><field name="sequence">53</field>
+    </record>
+    <record id="material_category_carton" model="brew.material.category">
+        <field name="name">包装箱</field><field name="code">carton</field><field name="material_group">packaging</field><field name="parent_id" ref="material_category_packaging"/><field name="sequence">54</field>
+    </record>
+</odoo>

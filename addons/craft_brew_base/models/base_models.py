@@ -120,6 +120,9 @@ class BrewTank(models.Model):
     maintenance_equipment_id = fields.Many2one(
         "maintenance.equipment", string="所属设备", check_company=True
     )
+    stock_location_id = fields.Many2one(
+        "stock.location", string="库存位置", check_company=True, ondelete="restrict"
+    )
     tank_type = fields.Selection(
         [("fermentation", "发酵罐"), ("bright", "清酒罐")],
         string="罐体类型",

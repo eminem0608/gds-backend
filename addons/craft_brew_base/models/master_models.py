@@ -44,7 +44,9 @@ class ProductTemplate(models.Model):
     _check_company_auto = True
 
     brew_item_type = fields.Selection(ITEM_TYPES, string="精酿物料类型", index=True)
-    brew_material_category = fields.Selection(MATERIAL_CATEGORIES, string="原料分类", index=True)
+    brew_material_category = fields.Selection(
+        selection="_brew_material_category_selection", string="原料分类", index=True
+    )
     brew_brand = fields.Char("品牌")
     brew_specification = fields.Char("规格")
     brew_shelf_life_days = fields.Integer("保质期(天)", default=0)
@@ -53,6 +55,16 @@ class ProductTemplate(models.Model):
     brew_alpha_acid = fields.Float("Alpha酸(%)")
     brew_flavor_desc = fields.Text("风味描述")
     brew_legacy_material_id = fields.Many2one("brew.material", copy=False, index=True)
+
+    @api.model
+    def _brew_material_category_selection(self):
+        defaults = [(code, label) for code, label in MATERIAL_CATEGORIES]
+        categories = self.env["brew.material.category"].sudo().search(
+            [("active", "=", True)], order="material_group, sequence, id"
+        )
+        values = dict(defaults)
+        values.update({item.code: item.name for item in categories})
+        return list(values.items())
 
     _sql_constraints = [
         (
@@ -94,17 +106,69 @@ class ResPartner(models.Model):
     brew_legacy_customer_id = fields.Many2one("brew.customer", copy=False, index=True)
 
 
+class BrewMaterialCategory(models.Model):
+    _name = "brew.material.category"
+    _description = "System Material Category"
+    _order = "material_group, sequence, id"
+
+    name = fields.Char("名称", required=True)
+    code = fields.Char("编码", required=True, index=True)
+    material_group = fields.Selection(
+        [
+            ("malt", "麦芽"),
+            ("hop", "啤酒花"),
+            ("yeast", "酵母"),
+            ("adjunct", "其他可发酵物"),
+            ("packaging", "包装材料"),
+        ],
+        string="原料大类",
+        required=True,
+        index=True,
+    )
+    parent_id = fields.Many2one("brew.material.category", string="上级种类", ondelete="restrict")
+    sequence = fields.Integer("排序", default=10)
+    active = fields.Boolean("启用", default=True)
+
+    _sql_constraints = [
+        ("material_category_code_unique", "unique(code)", "原料种类编码必须唯一。"),
+    ]
+
+
+class BrewBeerCategory(models.Model):
+    _name = "brew.beer.category"
+    _description = "System Beer Category"
+    _order = "parent_id, sequence, id"
+
+    name = fields.Char("名称", required=True)
+    code = fields.Char("编码", required=True, index=True)
+    parent_id = fields.Many2one("brew.beer.category", string="上级分类", ondelete="restrict")
+    sequence = fields.Integer("排序", default=10)
+    active = fields.Boolean("启用", default=True)
+
+    _sql_constraints = [
+        ("beer_category_code_unique", "unique(code)", "啤酒分类编码必须唯一。"),
+    ]
+
+
 class StockWarehouse(models.Model):
     _inherit = "stock.warehouse"
     _check_company_auto = True
 
+    brew_warehouse_type = fields.Selection(
+        [
+            ("raw_material", "原料仓"),
+            ("packaging", "包装物仓"),
+            ("semi_finished", "半成品仓"),
+            ("finished", "成品仓"),
+            ("qc", "待检仓"),
+            ("loss", "损耗仓"),
+            ("tank", "罐体仓"),
+        ], string="仓库类型", default="raw_material", required=True, index=True
+    )
+
     brew_factory_id = fields.Many2one(
         "brew.factory", string="所属厂区", check_company=True, index=True
     )
-
-    _sql_constraints = [
-        ("brew_factory_unique", "unique(brew_factory_id)", "一个厂区只能关联一个标准仓库。"),
-    ]
 
     @api.model_create_multi
     def create(self, values_list):
@@ -147,6 +211,13 @@ class MaintenanceEquipment(models.Model):
     )
     brew_equipment_type = fields.Selection(EQUIPMENT_TYPES, string="设备类型", index=True)
     brew_capacity_l = fields.Float("容量(L)")
+    brew_tank_volume_l = fields.Float("罐体积(L)")
+    brew_tank_count = fields.Integer("罐体数量")
+    brew_equipment_type_custom = fields.Char("自定义设备类型")
+    brew_saccharification_efficiency = fields.Float("糖化效率(%)")
+    brew_screen_water_l = fields.Float("筛板余水(L)")
+    brew_whirlpool_time_min = fields.Float("回旋时间(分钟)")
+    brew_filtration_speed_l_min = fields.Float("过滤速度(L/min)")
     brew_status = fields.Selection(
         [
             ("available", "可用"),

@@ -1,0 +1,26 @@
+<odoo noupdate="1">
+    <record id="beer_category_lager" model="brew.beer.category">
+        <field name="name">拉格</field><field name="code">lager</field><field name="sequence">10</field>
+    </record>
+    <record id="beer_category_pale_lager" model="brew.beer.category">
+        <field name="name">淡色拉格</field><field name="code">pale_lager</field><field name="parent_id" ref="beer_category_lager"/><field name="sequence">11</field>
+    </record>
+    <record id="beer_category_ipa" model="brew.beer.category">
+        <field name="name">IPA</field><field name="code">ipa</field><field name="sequence">20</field>
+    </record>
+    <record id="beer_category_pale_ale" model="brew.beer.category">
+        <field name="name">淡色艾尔</field><field name="code">pale_ale</field><field name="sequence">30</field>
+    </record>
+    <record id="beer_category_stout_porter" model="brew.beer.category">
+        <field name="name">世涛与波特</field><field name="code">stout_porter</field><field name="sequence">40</field>
+    </record>
+    <record id="beer_category_sour" model="brew.beer.category">
+        <field name="name">酸啤酒</field><field name="code">sour</field><field name="sequence">50</field>
+    </record>
+    <record id="beer_category_wheat" model="brew.beer.category">
+        <field name="name">小麦啤酒</field><field name="code">wheat</field><field name="sequence">60</field>
+    </record>
+    <record id="beer_category_specialty" model="brew.beer.category">
+        <field name="name">特色啤酒</field><field name="code">specialty</field><field name="sequence">70</field>
+    </record>
+</odoo>
