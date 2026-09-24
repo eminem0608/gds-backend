@@ -26,6 +26,8 @@ class AdminController(BrewApiController):
             "role_codes": user.brew_role_codes(),
             "factory_ids": [str(factory.id) for factory in user.brew_factory_ids],
             "default_factory_id": str(user.brew_default_factory_id.id) if user.brew_default_factory_id else None,
+            "supplier_id": str(user.brew_supplier_id.id) if user.brew_supplier_id else None,
+            "supplier_name": user.brew_supplier_id.name if user.brew_supplier_id else None,
             "version": user.write_date.isoformat() if user.write_date else None,
         }
 
@@ -108,6 +110,12 @@ class AdminController(BrewApiController):
             if request.env["res.users"].sudo().with_context(active_test=False).search_count([("login", "=", login)]):
                 raise ApiError("VALIDATION_DUPLICATE", "账号已存在。", 422)
             role_group_ids = self._role_group_ids(payload.get("role_codes") or [])
+            supplier_id = payload.get("supplier_id")
+            supplier = request.env["res.partner"].sudo().search(
+                [("id", "=", int(supplier_id or 0)), ("company_id", "=", company.id), ("supplier_rank", ">", 0)], limit=1
+            ) if supplier_id else request.env["res.partner"]
+            if "supplier" in (payload.get("role_codes") or []) and not supplier:
+                raise ApiError("VALIDATION_REQUIRED", "供应商账号必须绑定供应商主体。", 422)
             idem, replay = self._start_idempotency(actor, company, payload)
             if replay:
                 return replay
@@ -120,6 +128,7 @@ class AdminController(BrewApiController):
                     "company_id": company.id,
                     "company_ids": [Command.set([company.id])],
                     "groups_id": [Command.set([internal_group.id, *role_group_ids])],
+                    "brew_supplier_id": supplier.id if supplier else False,
                 }
             )
             result = self._serialize_user(user)

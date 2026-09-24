@@ -220,7 +220,7 @@ class BrewRecipeVersion(models.Model):
             quantity = line.quantity * factor
             unit_cost = line.product_id.standard_price
             quantity_in_product_uom = line.uom_id._compute_quantity(
-                quantity, line.product_id.uom_id
+                quantity, line.product_id.uom_id, round=False
             )
             cost = quantity_in_product_uom * unit_cost
             total += cost

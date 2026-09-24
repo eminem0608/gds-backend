@@ -5,6 +5,10 @@ from odoo.exceptions import ValidationError
 class ResUsers(models.Model):
     _inherit = "res.users"
 
+    brew_supplier_id = fields.Many2one(
+        "res.partner", string="供应商主体", domain="[('supplier_rank', '>', 0)]", index=True
+    )
+
     brew_factory_ids = fields.Many2many(
         "brew.factory",
         "brew_factory_user_rel",

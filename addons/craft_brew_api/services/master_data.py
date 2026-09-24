@@ -56,8 +56,9 @@ RESOURCE_CONFIG = {
             "craft_brew_core.group_brew_admin",
             "craft_brew_core.group_brew_production_director",
             "craft_brew_core.group_brew_purchase",
+            "craft_brew_core.group_brew_supplier",
         ],
-        "fields": {"name", "default_code", "brew_item_type", "brew_material_category", "brew_brand", "brew_specification", "uom_id", "uom_po_id", "tracking", "standard_price", "brew_shelf_life_days", "brew_extract_rate", "brew_color_ebc", "brew_alpha_acid", "brew_flavor_desc"},
+        "fields": {"name", "default_code", "brew_item_type", "brew_material_category", "brew_brand", "brew_specification", "uom_id", "uom_po_id", "tracking", "standard_price", "brew_shelf_life_days", "brew_extract_rate", "brew_color_ebc", "brew_supplier_price", "brew_supplier_quantity", "brew_alpha_acid", "brew_flavor_desc", "brew_supplier_id", "brew_moisture_pct", "brew_total_protein_pct", "brew_extract_dry_pct", "brew_diastatic_power_wk", "brew_friability_pct", "brew_kolbach_index_pct", "brew_beta_dextran_mg_l", "brew_fan_mg_100g", "brew_total_nitrogen_pct", "brew_soluble_nitrogen_pct", "brew_filtration_time_min", "brew_saccharification_time_min", "brew_impurity_pct", "brew_fc_difference_pct", "brew_germination_rate_pct", "brew_total_acidity", "brew_ph", "brew_boiled_color_ebc", "brew_turbidity_ebc", "brew_ota_ug_kg", "brew_fusarium_ug_kg", "brew_batch_no", "brew_production_date", "brew_release_date", "brew_malt_class", "brew_barley_variety", "brew_sample_source", "brew_sensory_desc"},
     },
     "material-categories": {
         "model": "brew.material.category",
@@ -86,7 +87,7 @@ RESOURCE_CONFIG = {
             "craft_brew_core.group_brew_admin",
             "craft_brew_core.group_brew_purchase",
         ],
-        "fields": {"name", "phone", "email", "street", "street2", "city", "brew_supply_category"},
+        "fields": {"name", "phone", "email", "street", "street2", "city", "comment", "active", "brew_supply_category", "brew_supplier_code", "brew_contact_name", "brew_social_credit_code", "brew_bank_account_name", "brew_bank_name", "brew_bank_branch", "brew_bank_account", "supplier_account_login", "supplier_account_password"},
     },
     "customers": {
         "model": "res.partner",
@@ -125,7 +126,7 @@ class MasterDataService:
             "warehouses": company_domain + [("brew_factory_id", "!=", False)],
             "locations": company_domain + [("brew_factory_id", "!=", False)],
             "products": company_domain + [("brew_item_type", "in", ["semi_finished", "finished_product"])],
-            "materials": company_domain + [("brew_item_type", "in", ["raw_material", "packaging_material"])],
+        "materials": company_domain + [("brew_item_type", "in", ["raw_material", "packaging_material"])],
             "packaging-specs": [("product_id.product_tmpl_id.company_id", "=", self.company.id)],
             "suppliers": company_domain + [("supplier_rank", ">", 0)],
             "customers": company_domain + [("customer_rank", ">", 0)],
@@ -133,6 +134,8 @@ class MasterDataService:
             "beer-categories": [("active", "=", True)],
         }
         domain = domains[resource]
+        if resource == "materials" and self.user.has_group("craft_brew_core.group_brew_supplier"):
+            domain += [("brew_supplier_id", "=", self.user.brew_supplier_id.id)]
         if resource in {"factories", "equipment", "tanks", "warehouses", "locations"} and not (
             self.user.has_group("craft_brew_core.group_brew_admin")
             or self.user.has_group("craft_brew_core.group_brew_general_manager")
@@ -163,8 +166,8 @@ class MasterDataService:
         if keyword:
             domain += [("name", "ilike", keyword)]
         # 主数据列表默认只展示有效记录；归档/删除记录仅通过恢复操作进入专门流程。
-        if "active" in model._fields:
-            domain += [("active", "=", True if active is None else active)]
+        if "active" in model._fields and active is not None:
+            domain += [("active", "=", active)]
         total = model.search_count(domain)
         records = model.search(
             domain,
@@ -192,10 +195,15 @@ class MasterDataService:
     def _values(self, resource, payload, create=False):
         config = self._config(resource)
         special_fields = {"tank_specs"} if resource == "equipment" else set()
+        if resource == "suppliers":
+            special_fields.update({"supplier_account_login", "supplier_account_password"})
         unknown = set(payload) - config["fields"] - {"version"} - special_fields
         if unknown:
             raise ApiError("VALIDATION_FORMAT", "存在不允许写入的字段。", 422, {"fields": sorted(unknown)})
         values = {key: payload[key] for key in config["fields"] if key in payload}
+        if resource == "suppliers":
+            values.pop("supplier_account_login", None)
+            values.pop("supplier_account_password", None)
         relation_fields = {
             "manager_id",
             "brew_factory_id",
@@ -231,10 +239,64 @@ class MasterDataService:
                 values.setdefault("brew_item_type", "raw_material")
                 if values["brew_item_type"] not in {"raw_material", "packaging_material"}:
                     raise ApiError("VALIDATION_FORMAT", "物料类型无效。", 422)
+                category_code = values.get("brew_material_category")
+                category = self.env["brew.material.category"].sudo().search(
+                    [("code", "=", category_code), ("active", "=", True)], limit=1
+                ) if category_code else self.env["brew.material.category"]
+                if not category or category.material_group not in {"malt", "adjunct", "hop", "yeast"}:
+                    raise ApiError("VALIDATION_FORMAT", "供应商商品只能选择系统已有的麦芽、可发酵物、啤酒花或酵母分类。", 422)
+                if create or "weight_uom" in payload:
+                    unit = payload.get("weight_uom", "kg")
+                    if unit not in {"kg", "g"}:
+                        raise ApiError("VALIDATION_FORMAT", "酿造原料请选择 kg 或 g 作为计量单位。", 422)
+                    uom = self.env.ref("uom.product_uom_kgm" if unit == "kg" else "uom.product_uom_gram")
+                    values.update({"uom_id": uom.id, "uom_po_id": uom.id})
+                if self.user.has_group("craft_brew_core.group_brew_supplier"):
+                    if not category.parent_id:
+                        raise ApiError("VALIDATION_FORMAT", "供应商商品必须选择系统已有的小类。", 422)
+                    if not self.user.brew_supplier_id or self.user.brew_supplier_id.company_id != self.company:
+                        raise ApiError("DATA_SCOPE_DENIED", "当前账号未绑定有效供应商。", 403)
+                    values["brew_supplier_id"] = self.user.brew_supplier_id.id
+                    required = {
+                        "brew_brand": "品牌/生产商",
+                        "brew_specification": "规格",
+                        "brew_supplier_price": "商品价格",
+                        "brew_supplier_quantity": "商品数量",
+                    }
+                    if category.material_group in {"malt", "adjunct", "yeast"}:
+                        required["brew_extract_rate"] = "浸出率/发酵度"
+                    if category.material_group in {"malt", "adjunct"}:
+                        required["brew_color_ebc"] = "色度"
+                    if category.material_group == "hop":
+                        required["brew_alpha_acid"] = "Alpha酸"
+                    missing = next(
+                        (label for key, label in required.items() if values.get(key) is None or (isinstance(values.get(key), str) and not values.get(key).strip())),
+                        None,
+                    )
+                    if missing:
+                        raise ApiError("VALIDATION_REQUIRED", f"{missing}不能为空。", 422)
+                    # 供应商只维护商品目录，不写库存估值成本；否则 Odoo 会触发库存移动估值权限校验。
+                    values.pop("standard_price", None)
             elif create and values.get("brew_item_type") not in {"semi_finished", "finished_product"}:
                 raise ApiError("VALIDATION_FORMAT", "产品类型必须是半成品或成品。", 422)
         elif resource == "suppliers":
             values.update({"company_id": self.company.id, "supplier_rank": 1})
+            if create:
+                required = {
+                    "name": "供应商名称",
+                    "brew_contact_name": "联系人",
+                    "phone": "联系电话",
+                    "email": "电子邮箱",
+                    "street": "地址",
+                    "brew_social_credit_code": "统一社会信用代码",
+                    "brew_bank_account_name": "账户名",
+                    "brew_bank_name": "银行名称",
+                    "brew_bank_branch": "分行名称",
+                    "brew_bank_account": "银行账号",
+                }
+                missing = next((label for key, label in required.items() if not str(values.get(key) or "").strip()), None)
+                if missing:
+                    raise ApiError("VALIDATION_REQUIRED", f"{missing}不能为空。", 422)
         elif resource == "customers":
             values.update({"company_id": self.company.id, "customer_rank": 1})
         elif resource not in {"packaging-specs", "material-categories", "beer-categories"}:
@@ -412,6 +474,10 @@ class MasterDataService:
         self.ensure_write_access(resource)
         values = self._values(resource, payload, create=True)
         record = self.env[self._config(resource)["model"]].sudo().create(values)
+        if resource == "suppliers":
+            if not record.brew_supplier_code:
+                record.brew_supplier_code = f"SUP-{record.id:06d}"
+            self._create_supplier_account(record, payload)
         if resource == "equipment":
             self._sync_equipment_tanks(record, payload)
         if resource == "factories" and not record.stock_warehouse_id:
@@ -428,6 +494,28 @@ class MasterDataService:
         elif resource == "factories":
             self._ensure_tank_warehouse(record)
         return record, self.serialize(resource, record)
+
+    def _create_supplier_account(self, partner, payload):
+        login = str(payload.get("supplier_account_login") or "").strip()
+        password = str(payload.get("supplier_account_password") or "")
+        if not login and not password:
+            return
+        if not login or len(password) < 8:
+            raise ApiError("VALIDATION_REQUIRED", "供应商账号和初始密码必须同时填写，密码至少 8 位。", 422)
+        user_model = self.env["res.users"].sudo().with_context(active_test=False)
+        if user_model.search_count([("login", "=", login)]):
+            raise ApiError("VALIDATION_DUPLICATE", "供应商账号已存在。", 422)
+        internal_group = self.env.ref("base.group_user")
+        supplier_group = self.env.ref("craft_brew_core.group_brew_supplier")
+        user_model.with_context(no_reset_password=True).create({
+            "name": partner.name,
+            "login": login,
+            "password": password,
+            "company_id": self.company.id,
+            "company_ids": [(6, 0, [self.company.id])],
+            "groups_id": [(6, 0, [internal_group.id, supplier_group.id])],
+            "brew_supplier_id": partner.id,
+        })
 
     def update(self, resource, record_id, payload):
         self.ensure_write_access(resource)
@@ -519,6 +607,12 @@ class MasterDataService:
             data["company_id"] = str(self.company.id)
         if resource in {"products", "materials"}:
             data["product_variant_id"] = str(record.product_variant_id.id)
+            data["weight_uom"] = "kg" if record.uom_id == self.env.ref("uom.product_uom_kgm") else "g" if record.uom_id == self.env.ref("uom.product_uom_gram") else ""
+            data["is_weight_uom"] = record.uom_id.category_id == self.env.ref("uom.product_uom_kgm").category_id
+            data["supplier"] = {"id": str(record.brew_supplier_id.id), "name": record.brew_supplier_id.name} if record.brew_supplier_id else None
+        if resource == "suppliers":
+            account = self.env["res.users"].sudo().with_context(active_test=False).search([("brew_supplier_id", "=", record.id)], limit=1)
+            data["account"] = {"login": account.login, "active": account.active} if account else None
         return data
 
     def _equipment(self, equipment_id):

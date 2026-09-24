@@ -50,6 +50,11 @@
         <field name="category_id" ref="module_category_craft_brew"/>
     </record>
 
+    <record id="group_brew_supplier" model="res.groups">
+        <field name="name">供应商</field>
+        <field name="category_id" ref="module_category_craft_brew"/>
+    </record>
+
     <function model="res.users" name="write">
         <value model="res.users" search="[('id', '=', ref('base.user_admin'))]"/>
         <value eval="{'groups_id': [(4, ref('craft_brew_core.group_brew_admin'))]}"/>

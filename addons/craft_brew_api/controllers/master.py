@@ -38,7 +38,7 @@ class MasterDataController(BrewApiController):
                 page_size = min(max(int(request.httprequest.args.get("page_size", 20)), 1), 100)
                 keyword = request.httprequest.args.get("keyword", "").strip()
                 active_arg = request.httprequest.args.get("active")
-                active = None if active_arg is None else active_arg.lower() in {"1", "true", "yes"}
+                active = True if active_arg is None else (None if active_arg.lower() == "all" else active_arg.lower() in {"1", "true", "yes"})
                 data, total = service.list(resource, page, page_size, keyword, active)
                 return self._response(
                     data,

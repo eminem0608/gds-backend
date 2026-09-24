@@ -131,6 +131,14 @@ ROLE_DEFINITIONS = {
             "admin.integration.monitor",
         },
     },
+    "supplier": {
+        "xml_id": "craft_brew_core.group_brew_supplier",
+        "label": "供应商",
+        "default_page": "supplier_catalog",
+        "permissions": {
+            "supplier.catalog.manage",
+        },
+    },
 }
 
 
@@ -184,6 +192,7 @@ MENU_DEFINITIONS = (
             "tenant_admin",
         },
     ),
+    ("supplier_catalog", "供应商商品", {"supplier"}),
 )
 
 
@@ -196,6 +205,7 @@ ROLE_PRIORITY = (
     "salesperson",
     "finance",
     "tenant_admin",
+    "supplier",
 )
 
 

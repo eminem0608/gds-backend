@@ -3,6 +3,7 @@ import json
 from odoo import Command
 
 from ..controllers.base import ApiError
+from .recipe_design import design_values
 
 
 class RecipeService:
@@ -135,7 +136,7 @@ class RecipeService:
             suffix = 1
             while self.env["brew.recipe"].sudo().search_count([("company_id", "=", self.company.id), ("code", "=", code)]):
                 suffix += 1
-                code = f"{prefix}-{product.id}-1-{suffix}"
+                code = f"{prefix}-{product.id if product else 'RCP'}-1-{suffix}"
         category_id = int(payload.get("beer_category_id") or 0)
         subcategory_id = int(payload.get("beer_subcategory_id") or 0)
         category_model = self.env["brew.beer.category"].sudo()
@@ -146,7 +147,10 @@ class RecipeService:
         recipe = self.env["brew.recipe"].sudo().create(
             {"name": name, "code": code, "company_id": self.company.id, "product_tmpl_id": product.id if product else False, "beer_style": payload.get("beer_style"), "beer_category_id": category.id, "beer_subcategory_id": subcategory.id, "description": payload.get("description")}
         )
-        return recipe, self.serialize_recipe(recipe)
+        data = self.serialize_recipe(recipe)
+        if "initial_version" in payload:
+            _version, data["initial_version"] = self.create_version(recipe.id, payload["initial_version"])
+        return recipe, data
 
     def update_recipe(self, recipe_id, payload):
         self.ensure_manage()
@@ -172,9 +176,11 @@ class RecipeService:
         self.ensure_manage()
         recipe = self._recipe(recipe_id)
         next_version = max(recipe.version_ids.mapped("version") or [0]) + 1
+        detail_values = design_values(self.env, self.company, payload.get("design") or {}, payload.get("base_volume_l") or 1000)
         version = self.env["brew.recipe.version"].sudo().create(
             {
                 "recipe_id": recipe.id,
+                **detail_values,
                 "version": next_version,
                 "base_volume_l": float(payload.get("base_volume_l") or 1000),
                 "original_gravity": payload.get("original_gravity"),
@@ -195,6 +201,7 @@ class RecipeService:
         values = {key: payload[key] for key in {"base_volume_l", "original_gravity", "final_gravity", "bitterness_ibu", "color_ebc", "alcohol_abv", "notes"} if key in payload}
         if "design" in payload:
             values["design_json"] = json.dumps(payload.get("design") or {}, ensure_ascii=False, sort_keys=True)
+            values.update(design_values(self.env, self.company, payload.get("design") or {}, payload.get("base_volume_l", version.base_volume_l)))
         if not values:
             raise ApiError("VALIDATION_REQUIRED", "没有可更新的字段。", 422)
         version.write(values)
