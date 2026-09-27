@@ -16,9 +16,9 @@ REPORT_GROUPS = {
 
 
 class ReportingService:
-    def __init__(self, env, user, company):
+    def __init__(self, env, user, company, enforce_report_access=True):
         self.env, self.user, self.company = env, user, company
-        if not any(user.has_group(group) for group in REPORT_GROUPS):
+        if enforce_report_access and not any(user.has_group(group) for group in REPORT_GROUPS):
             raise ApiError("PERMISSION_DENIED", "The current account cannot view dashboards or reports.", 403)
         self.inventory = InventoryService(env, user, company, enforce_access=False)
 

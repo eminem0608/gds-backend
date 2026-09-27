@@ -225,6 +225,15 @@ def menus_for_roles(role_codes):
     ]
 
 
+def menu_codes_for_role(role_code):
+    """Return the default menu codes granted by one system role."""
+    return [
+        code
+        for code, _label, allowed_roles in MENU_DEFINITIONS
+        if role_code in allowed_roles
+    ]
+
+
 def default_page_for_roles(role_codes):
     role_set = set(role_codes)
     for code in ROLE_PRIORITY:

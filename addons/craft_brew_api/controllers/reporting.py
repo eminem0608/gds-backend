@@ -8,11 +8,16 @@ from .base import BrewApiController
 
 
 class ReportingController(BrewApiController):
-    def _reporting_context(self, mutation=False):
+    def _reporting_context(self, mutation=False, enforce_report_access=True):
         user, company, _session, mode = self._authenticate()
         if mutation:
             self._validate_cookie_csrf(mode)
-        return user, company, ReportingService(request.env, user, company)
+        return user, company, ReportingService(
+            request.env,
+            user,
+            company,
+            enforce_report_access=enforce_report_access,
+        )
 
     @staticmethod
     def _reporting_paging():
@@ -25,7 +30,7 @@ class ReportingController(BrewApiController):
     def dashboard(self):
         request_id = self._request_id()
         try:
-            _user, _company, service = self._reporting_context()
+            _user, _company, service = self._reporting_context(enforce_report_access=False)
             return self._response(service.dashboard(request.httprequest.args.get("factory_id")), request_id=request_id)
         except Exception as exc:
             return self._error_response(exc, request_id)

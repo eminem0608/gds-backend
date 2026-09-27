@@ -2,3 +2,5 @@ id,name,model_id:id,group_id:id,perm_read,perm_write,perm_create,perm_unlink
 access_brew_api_session_admin,brew.api.session admin,model_brew_api_session,craft_brew_core.group_brew_admin,1,0,0,0
 access_brew_audit_log_admin,brew.audit.log admin,model_brew_audit_log,craft_brew_core.group_brew_admin,1,0,0,0
 access_brew_outbox_event_admin,brew.outbox.event admin,model_brew_outbox_event,craft_brew_core.group_brew_admin,1,0,0,0
+access_brew_organization_admin,brew.organization admin,model_brew_organization,craft_brew_core.group_brew_admin,1,1,1,0
+access_brew_role_configuration_admin,brew.role.configuration admin,model_brew_role_configuration,craft_brew_core.group_brew_admin,1,1,1,0

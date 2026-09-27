@@ -22,7 +22,7 @@ services:
       - ./addons:/mnt/extra-addons
       - ./config/odoo.conf:/etc/odoo/odoo.conf
       - craft_brew_odoo_data:/var/lib/odoo
-    command: odoo -c /etc/odoo/odoo.conf --dev=all
+    command: odoo -c /etc/odoo/odoo.conf --dev=all --without-demo=all
 
 volumes:
   craft_brew_db_data:

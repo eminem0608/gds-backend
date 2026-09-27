@@ -51,6 +51,7 @@ class RoleServiceTest(unittest.TestCase):
                 "salesperson",
                 "finance",
                 "tenant_admin",
+                "supplier",
             },
         )
 
@@ -314,6 +315,21 @@ class FrontendContractTest(unittest.TestCase):
         self.assertIn("def _require_manage", source)
         self.assertIn("def _require_approve", source)
         self.assertIn("self._require_manage()", source)
+
+    def test_operator_dashboard_and_production_entry_contracts(self):
+        reporting_text = (
+            ROOT / "addons/craft_brew_api/services/reporting.py"
+        ).read_text(encoding="utf-8")
+        app_text = (
+            ROOT.parent / "gds-web" / "src" / "App.vue"
+        ).read_text(encoding="utf-8")
+        reporting_controller = (
+            ROOT / "addons/craft_brew_api/controllers/reporting.py"
+        ).read_text(encoding="utf-8")
+        self.assertIn('self._reporting_context(enforce_report_access=False)', reporting_controller)
+        self.assertIn('"craft_brew_core.group_brew_operator"', reporting_text)
+        self.assertIn('if (this.canReadDemands) result.push({ id: "requests"', app_text)
+        self.assertIn('? "fermentation"', app_text)
 
 
 if __name__ == "__main__":
