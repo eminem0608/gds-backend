@@ -8,6 +8,8 @@
                 <field name="default_code"/>
                 <field name="brew_item_type"/>
                 <field name="brew_material_category"/>
+                <field name="brew_beer_category_id"/>
+                <field name="brew_beer_subcategory_id"/>
                 <field name="brew_specification"/>
                 <field name="uom_id"/>
                 <field name="brew_shelf_life_days"/>
@@ -29,6 +31,8 @@
                             <field name="company_id"/>
                             <field name="brew_item_type"/>
                             <field name="brew_material_category" invisible="brew_item_type != 'raw_material'"/>
+                            <field name="brew_beer_category_id" invisible="brew_item_type != 'finished_product'"/>
+                            <field name="brew_beer_subcategory_id" invisible="brew_item_type != 'finished_product'" domain="[('parent_id', '=', brew_beer_category_id)]"/>
                             <field name="brew_brand"/>
                             <field name="brew_specification"/>
                         </group>

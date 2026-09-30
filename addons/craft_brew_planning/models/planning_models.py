@@ -22,12 +22,15 @@ class BrewProductionPlan(models.Model):
     equipment_id = fields.Many2one("maintenance.equipment", required=True, check_company=True, index=True)
     tank_id = fields.Many2one("brew.tank", required=True, check_company=True, index=True)
     owner_id = fields.Many2one("res.users", check_company=True, index=True)
+    mash_owner_id = fields.Many2one("res.users", check_company=True, index=True)
+    fermentation_owner_id = fields.Many2one("res.users", check_company=True, index=True)
     state = fields.Selection(
         [("draft", "草稿"), ("checked", "已校验"), ("pending_approval", "待审批"), ("approved", "已批准"), ("dispatched", "已下发"), ("in_progress", "执行中"), ("done", "已完成"), ("cancelled", "已取消"), ("terminated", "已终止")],
         required=True, default="draft", index=True,
     )
     recipe_snapshot_json = fields.Text(default="{}", readonly=True)
     material_snapshot_json = fields.Text(default="[]", readonly=True)
+    production_design_json = fields.Text(default="{}", readonly=True)
     resource_check_json = fields.Text(default="{}", readonly=True)
     approval_instance_id = fields.Many2one("brew.approval.instance", check_company=True)
     dispatched_at = fields.Datetime()
@@ -39,7 +42,7 @@ class BrewProductionPlan(models.Model):
         ("time_order", "check(planned_end > planned_start)", "计划结束时间必须晚于开始时间。"),
     ]
 
-    _editable_fields = {"factory_id", "demand_id", "product_tmpl_id", "recipe_version_id", "planned_volume_l", "planned_start", "planned_end", "equipment_id", "tank_id", "owner_id"}
+    _editable_fields = {"factory_id", "demand_id", "product_tmpl_id", "recipe_version_id", "source_production_batch_id", "planned_volume_l", "planned_start", "planned_end", "equipment_id", "tank_id", "owner_id", "mash_owner_id", "fermentation_owner_id", "production_design_json"}
 
     @api.model_create_multi
     def create(self, values_list):
@@ -56,14 +59,20 @@ class BrewProductionPlan(models.Model):
                 values = {**values, "state": "draft", "resource_check_json": "{}"}
         return super().write(values)
 
-    @api.constrains("factory_id", "equipment_id", "tank_id", "recipe_version_id", "product_tmpl_id", "planned_volume_l")
+    @api.constrains("factory_id", "equipment_id", "tank_id", "recipe_version_id", "source_production_batch_id", "product_tmpl_id", "planned_volume_l")
     def _check_relations(self):
         for plan in self:
             if plan.equipment_id.brew_factory_id != plan.factory_id or plan.tank_id.factory_id != plan.factory_id:
                 raise ValidationError("设备和罐体必须属于计划厂区。")
             if plan.tank_id.capacity_l < plan.planned_volume_l:
                 raise ValidationError("计划体积不能超过目标罐容量。")
-            if plan.recipe_version_id.state != "active":
+            if plan.source_production_batch_id:
+                source = plan.source_production_batch_id
+                if source.state not in {"in_tank", "completed"}:
+                    raise ValidationError("只能引用已进罐或已完成的生产批次工艺。")
+                if source.product_tmpl_id != plan.product_tmpl_id or source.recipe_version_id != plan.recipe_version_id:
+                    raise ValidationError("参考生产批次必须与计划产品及来源基础版本一致。")
+            elif plan.recipe_version_id.state != "active":
                 raise ValidationError("生产计划只能引用使用中的配方版本。")
             if plan.recipe_version_id.recipe_id.product_tmpl_id != plan.product_tmpl_id:
                 raise ValidationError("配方版本与计划产品不一致。")
@@ -90,18 +99,43 @@ class BrewProductionPlan(models.Model):
 
     def expand_materials(self):
         self.ensure_one()
-        calculation = self.recipe_version_id.calculate(self.planned_volume_l)
-        recipe_snapshot = {
-            "recipe_id": self.recipe_version_id.recipe_id.id,
-            "recipe_code": self.recipe_version_id.recipe_id.code,
-            "version_id": self.recipe_version_id.id,
-            "version": self.recipe_version_id.version,
-            "base_volume_l": self.recipe_version_id.base_volume_l,
-            "process_steps": [
-                {"sequence": step.sequence, "name": step.name, "phase": step.phase, "action_type": step.action_type, "mandatory_confirmation": step.mandatory_confirmation, "config": json.loads(step.config_json or "{}")}
-                for step in self.recipe_version_id.process_step_ids.sorted("sequence")
-            ],
-        }
+        source_batch = self.source_production_batch_id
+        if source_batch:
+            recipe_snapshot = json.loads(source_batch.recipe_snapshot_json or "{}")
+            recipe_snapshot.update({
+                "version_type": "production",
+                "version_label": f"生产批次版 · {source_batch.name}",
+                "source_batch_id": source_batch.id,
+                "source_batch_name": source_batch.name,
+                "source_version_id": self.recipe_version_id.id,
+                "source_version": self.recipe_version_id.version,
+                "source_version_label": f"基础工艺 V{self.recipe_version_id.version:02d}",
+            })
+            base_calculation = json.loads(source_batch.material_snapshot_json or "{}")
+            ratio = self.planned_volume_l / source_batch.planned_volume_l if source_batch.planned_volume_l else 1
+            calculation = dict(base_calculation)
+            calculation["volume_l"] = self.planned_volume_l
+            calculation["materials"] = [
+                {**line, "quantity": (line.get("quantity") or 0) * ratio, "estimated_cost": (line.get("estimated_cost") or 0) * ratio}
+                for line in base_calculation.get("materials", [])
+            ]
+            calculation["estimated_cost"] = (base_calculation.get("estimated_cost") or 0) * ratio
+        else:
+            calculation = self.recipe_version_id.calculate(self.planned_volume_l)
+            recipe_snapshot = {
+                "recipe_id": self.recipe_version_id.recipe_id.id,
+                "recipe_code": self.recipe_version_id.recipe_id.code,
+                "version_id": self.recipe_version_id.id,
+                "version": self.recipe_version_id.version,
+                "version_type": "base",
+                "version_label": f"基础工艺 V{self.recipe_version_id.version:02d}",
+                "base_volume_l": self.recipe_version_id.base_volume_l,
+                "design": json.loads(self.recipe_version_id.design_json or "{}"),
+                "process_steps": [
+                    {"sequence": step.sequence, "name": step.name, "phase": step.phase, "action_type": step.action_type, "mandatory_confirmation": step.mandatory_confirmation, "config": json.loads(step.config_json or "{}")}
+                    for step in self.recipe_version_id.process_step_ids.sorted("sequence")
+                ],
+            }
         self.with_context(brew_state_transition=True).write(
             {"recipe_snapshot_json": json.dumps(recipe_snapshot, ensure_ascii=False), "material_snapshot_json": json.dumps(calculation, ensure_ascii=False)}
         )
@@ -130,8 +164,11 @@ class BrewProductionPlan(models.Model):
         self.ensure_one()
         if self.state != "approved":
             raise ValidationError("只有已批准计划可以下发。")
+        if not self.mash_owner_id or not self.fermentation_owner_id:
+            raise ValidationError("下发生产计划前必须指定糖化负责人和发酵负责人。")
         tasks = [
-            {"name": f"{self.name} 生产执行", "task_type": "production", "role_code": "operator", "assignee_id": self.owner_id.id or False},
+            {"name": f"{self.name} 糖化执行", "task_type": "mashing", "role_code": "operator", "assignee_id": self.mash_owner_id.id},
+            {"name": f"{self.name} 发酵执行", "task_type": "fermentation", "role_code": "operator", "assignee_id": self.fermentation_owner_id.id},
             {"name": f"{self.name} 备料", "task_type": "material_preparation", "role_code": "warehouse_keeper"},
         ]
         for values in tasks:

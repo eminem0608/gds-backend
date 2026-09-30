@@ -84,26 +84,77 @@ class AdminController(BrewApiController):
                     "sequence": 1,
                 }
             )
-        factories = request.env["brew.factory"].sudo().with_context(active_test=False).search(
-            [("company_id", "=", company.id)]
+        organizations = model.search(
+            [("company_id", "=", company.id), ("organization_type", "=", "factory")]
         )
-        for factory in factories:
-            code = f"FACTORY-{factory.id}"
+        Factory = request.env["brew.factory"].sudo().with_context(active_test=False)
+        for organization in organizations:
+            factory = organization.factory_id
+            if not factory:
+                factory = Factory.search(
+                    [("company_id", "=", company.id), ("code", "=", organization.code)], limit=1
+                ) or Factory.search(
+                    [("company_id", "=", company.id), ("name", "=", organization.name)], limit=1
+                )
+            values = {
+                "company_id": company.id,
+                "name": organization.name,
+                "address": organization.address or "",
+                "active": organization.active,
+            }
+            if factory:
+                factory.write(values)
+            else:
+                factory = Factory.create({**values, "code": organization.code})
+            if organization.factory_id != factory:
+                organization.write({"factory_id": factory.id})
+
+        factories = Factory.search([("company_id", "=", company.id)])
+        linked_factory_ids = set(organizations.mapped("factory_id").ids)
+        for factory in factories.filtered(lambda item: item.id not in linked_factory_ids):
             organization = model.search(
-                [("company_id", "=", company.id), ("code", "=", code)], limit=1
+                [("company_id", "=", company.id), ("code", "=", factory.code)], limit=1
             )
             values = {
+                "company_id": company.id,
                 "name": factory.name,
                 "parent_id": root.id,
                 "organization_type": "factory",
                 "address": factory.address or "",
                 "active": factory.active,
+                "factory_id": factory.id,
             }
             if organization:
                 organization.write(values)
             else:
-                model.create({"company_id": company.id, "code": code, **values})
+                model.create({"code": factory.code, **values})
         return model.search([("company_id", "=", company.id)], order="sequence,name,id")
+
+    def _sync_organization_factory(self, organization):
+        """Keep factory master data and its organization node linked and aligned."""
+        Factory = request.env["brew.factory"].sudo().with_context(active_test=False)
+        if organization.organization_type != "factory":
+            if organization.factory_id:
+                organization.factory_id.write({"active": False})
+                organization.write({"factory_id": False})
+            return
+        factory = organization.factory_id or Factory.search(
+            [("company_id", "=", organization.company_id.id), ("code", "=", organization.code)], limit=1
+        ) or Factory.search(
+            [("company_id", "=", organization.company_id.id), ("name", "=", organization.name)], limit=1
+        )
+        values = {
+            "company_id": organization.company_id.id,
+            "name": organization.name,
+            "address": organization.address or "",
+            "active": organization.active,
+        }
+        if factory:
+            factory.write(values)
+        else:
+            factory = Factory.create({**values, "code": organization.code})
+        if organization.factory_id != factory:
+            organization.write({"factory_id": factory.id})
 
     def _serialize_organization(self, organization, user_counts=None, role_names=None):
         user_counts = user_counts or {}
@@ -312,6 +363,7 @@ class AdminController(BrewApiController):
                     "sequence": int(payload.get("sequence") or 10),
                 }
             )
+            self._sync_organization_factory(organization)
             result = self._serialize_organization(organization)
             self._audit("organization", "create", request_id, user=actor, company=company, summary={"organization_id": organization.id})
             return self._complete_idempotency(idem, result, 201)
@@ -377,6 +429,7 @@ class AdminController(BrewApiController):
             if replay:
                 return replay
             organization.write(values)
+            self._sync_organization_factory(organization)
             result = self._serialize_organization(organization)
             self._audit("organization", "update", request_id, user=actor, company=company, summary={"organization_id": organization.id})
             return self._complete_idempotency(idem, result)

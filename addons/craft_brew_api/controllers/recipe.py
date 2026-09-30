@@ -75,6 +75,21 @@ class RecipeController(BrewApiController):
         except Exception as exc:
             return self._error_response(exc, request_id)
 
+    @http.route("/api/v1/recipes/<int:recipe_id>/production-runs", type="http", auth="public", methods=["GET"], csrf=False)
+    def production_runs(self, recipe_id):
+        request_id = self._request_id()
+        try:
+            _user, _company, service = self._recipe_context()
+            page, page_size = self._page_args()
+            data, total = service.list_production_runs(recipe_id, page, page_size)
+            return self._response(
+                data,
+                meta={"page": page, "page_size": page_size, "total": total, "has_more": page * page_size < total},
+                request_id=request_id,
+            )
+        except Exception as exc:
+            return self._error_response(exc, request_id)
+
     @http.route("/api/v1/recipe-versions/<int:version_id>", type="http", auth="public", methods=["GET", "PATCH"], csrf=False)
     def version(self, version_id):
         request_id = self._request_id()

@@ -24,6 +24,15 @@ class BrewRecipe(models.Model):
         check_company=True,
         domain="[('brew_item_type', '=', 'finished_product')]",
     )
+    equipment_id = fields.Many2one(
+        "maintenance.equipment",
+        string="酿造系统",
+        required=False,
+        check_company=True,
+        domain="[('brew_equipment_type', '=', 'mash')]",
+        ondelete="restrict",
+        index=True,
+    )
     beer_style = fields.Char()
     beer_category_id = fields.Many2one("brew.beer.category", string="啤酒大类", ondelete="restrict", index=True)
     beer_subcategory_id = fields.Many2one("brew.beer.category", string="啤酒小类", ondelete="restrict", index=True)
@@ -37,9 +46,9 @@ class BrewRecipe(models.Model):
     _sql_constraints = [
         ("company_code_unique", "unique(company_id, code)", "同一企业内配方编码必须唯一。"),
         (
-            "company_product_unique",
-            "unique(company_id, product_tmpl_id)",
-            "同一企业内一个成品只能关联一个配方。",
+            "company_product_equipment_unique",
+            "unique(company_id, product_tmpl_id, equipment_id)",
+            "同一企业内同一成品和酿造系统只能关联一个配方。",
         ),
     ]
 
@@ -131,6 +140,27 @@ class BrewRecipeVersion(models.Model):
         if any(item.state not in {"draft", "returned"} for item in self):
             raise ValidationError("只有草稿或已退回版本可以修改。")
 
+    def _record_review_event(self, action, user=None, comment=None):
+        self.ensure_one()
+        event_model = self.env["brew.recipe.review.event"].sudo()
+        last_submission = event_model.search(
+            [("version_id", "=", self.id), ("action", "=", "submitted")],
+            order="review_round desc, id desc",
+            limit=1,
+        )
+        review_round = (last_submission.review_round or 0) + 1 if action == "submitted" else (last_submission.review_round or 1)
+        event_model.create(
+            {
+                "company_id": self.company_id.id,
+                "recipe_id": self.recipe_id.id,
+                "version_id": self.id,
+                "review_round": review_round,
+                "action": action,
+                "user_id": (user or self.env.user).id,
+                "comment": comment,
+            }
+        )
+
     def action_submit(self, user=None):
         self.ensure_one()
         self._ensure_draft()
@@ -154,9 +184,10 @@ class BrewRecipeVersion(models.Model):
                 "return_reason": False,
             }
         )
+        self._record_review_event("submitted", user=user)
         return True
 
-    def action_approve(self, user=None):
+    def action_approve(self, user=None, comment=None):
         self.ensure_one()
         if self.state != "submitted":
             raise ValidationError("只有待审核版本可以审核通过。")
@@ -167,31 +198,35 @@ class BrewRecipeVersion(models.Model):
                 "approved_at": fields.Datetime.now(),
             }
         )
+        self._record_review_event("approved", user=user, comment=comment)
         return True
 
-    def action_return(self, reason):
+    def action_return(self, reason, user=None):
         self.ensure_one()
         if self.state != "submitted" or not str(reason or "").strip():
             raise ValidationError("只有待审核版本可以退回，且必须填写原因。")
         self.with_context(brew_state_transition=True).write(
             {"state": "returned", "return_reason": reason}
         )
+        self._record_review_event("returned", user=user, comment=reason)
         return True
 
-    def action_activate(self):
+    def action_activate(self, user=None):
         self.ensure_one()
         if self.state != "approved":
             raise ValidationError("只有已审核版本可以启用。")
         current = self.recipe_id.version_ids.filtered(lambda item: item.state == "active")
         current.with_context(brew_state_transition=True).write({"state": "inactive"})
         self.with_context(brew_state_transition=True).write({"state": "active"})
+        self._record_review_event("activated", user=user)
         return True
 
-    def action_deactivate(self):
+    def action_deactivate(self, user=None):
         self.ensure_one()
         if self.state != "active":
             raise ValidationError("只有使用中的版本可以停用。")
         self.with_context(brew_state_transition=True).write({"state": "inactive"})
+        self._record_review_event("deactivated", user=user)
         return True
 
     def copy_as_draft(self):

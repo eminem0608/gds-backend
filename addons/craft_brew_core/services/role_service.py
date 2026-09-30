@@ -25,7 +25,6 @@ ROLE_DEFINITIONS = {
         "permissions": {
             "dashboard.tanks.read",
             "dashboard.plans.read",
-            "recipe.version.manage",
             "recipe.version.approve",
             "demand.product.confirm",
             "plan.production.manage",
@@ -38,6 +37,14 @@ ROLE_DEFINITIONS = {
             "purchase.requisition.approve",
             "trace.production.read",
             "report.production.read",
+        },
+    },
+    "brewer": {
+        "xml_id": "craft_brew_core.group_brew_brewer",
+        "label": "酿酒师",
+        "default_page": "recipe",
+        "permissions": {
+            "recipe.version.manage",
         },
     },
     "operator": {
@@ -125,8 +132,8 @@ ROLE_DEFINITIONS = {
             "admin.data_scope.assign",
             "base.master_data.manage",
             "admin.rule.manage",
-            "recipe.version.manage",
             "recipe.version.approve",
+            "demand.product.confirm",
             "admin.audit.read",
             "admin.integration.monitor",
         },
@@ -150,7 +157,7 @@ MENU_DEFINITIONS = (
         {"general_manager", "production_director", "operator", "warehouse_keeper"},
     ),
     ("production", "生产管理", {"general_manager", "production_director", "operator", "salesperson"}),
-    ("recipe", "配方工艺", {"general_manager", "production_director", "tenant_admin"}),
+    ("recipe", "配方工艺", {"general_manager", "production_director", "brewer", "tenant_admin"}),
     (
         "inventory",
         "库存采购",
@@ -199,6 +206,7 @@ MENU_DEFINITIONS = (
 ROLE_PRIORITY = (
     "general_manager",
     "production_director",
+    "brewer",
     "operator",
     "warehouse_keeper",
     "purchaser",

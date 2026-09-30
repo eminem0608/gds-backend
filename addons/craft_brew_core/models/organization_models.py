@@ -1,5 +1,6 @@
 from odoo import Command, api, fields, models
 from odoo.exceptions import ValidationError
+from psycopg2 import IntegrityError
 
 from ..services.role_service import (
     MENU_DEFINITIONS,
@@ -137,16 +138,25 @@ class BrewRoleConfiguration(models.Model):
         }
         for sequence, (code, definition) in enumerate(ROLE_DEFINITIONS.items(), start=1):
             if code not in existing:
-                existing[code] = self.sudo().create(
-                    {
-                        "company_id": company.id,
-                        "code": code,
-                        "name": definition["label"],
-                        "description": "系统内置权限模板",
-                        "sequence": sequence * 10,
-                        "menu_codes": menu_codes_for_role(code),
-                    }
-                )
+                try:
+                    with self.env.cr.savepoint():
+                        existing[code] = self.sudo().create(
+                            {
+                                "company_id": company.id,
+                                "code": code,
+                                "name": definition["label"],
+                                "description": "系统内置权限模板",
+                                "sequence": sequence * 10,
+                                "menu_codes": menu_codes_for_role(code),
+                            }
+                        )
+                except IntegrityError:
+                    # Concurrent first page loads can seed the same role at once.
+                    existing[code] = self.sudo().with_context(active_test=False).search(
+                        [("company_id", "=", company.id), ("code", "=", code)], limit=1
+                    )
+                    if not existing[code]:
+                        raise
         return self.sudo().with_context(active_test=False).search(
             [("company_id", "=", company.id)], order="sequence,id"
         )

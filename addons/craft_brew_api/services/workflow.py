@@ -8,7 +8,55 @@ class WorkflowService:
 
     def _role_codes(self): return set(self.user.brew_role_codes())
 
+    def _ensure_returned_recipe_tasks(self):
+        versions = self.env["brew.recipe.version"].sudo().search(
+            [
+                ("company_id", "=", self.company.id),
+                ("submitted_by_id", "=", self.user.id),
+                ("state", "=", "returned"),
+            ]
+        )
+        if not versions:
+            return
+        task_model = self.env["brew.task"].sudo()
+        active_tasks = task_model.search(
+            [
+                ("company_id", "=", self.company.id),
+                ("task_type", "=", "recipe_revision"),
+                ("target_model", "=", "brew.recipe.version"),
+                ("target_id", "in", versions.ids),
+                ("state", "not in", ["done", "cancelled"]),
+            ]
+        )
+        existing_version_ids = set(active_tasks.mapped("target_id"))
+        if len(existing_version_ids) == len(versions):
+            return
+        submissions = self.env["brew.recipe.review.event"].sudo().search(
+            [("version_id", "in", versions.ids), ("action", "=", "submitted")],
+            order="review_round desc,id desc",
+        )
+        rounds = {}
+        for event in submissions:
+            rounds.setdefault(event.version_id.id, event.review_round or 1)
+        for version in versions:
+            if version.id in existing_version_ids:
+                continue
+            review_round = rounds.get(version.id, 1)
+            task_model.create(
+                {
+                    "name": f"配方修改 · {version.recipe_id.name} · {version.name} · 第 {review_round} 轮退回",
+                    "task_type": "recipe_revision",
+                    "company_id": self.company.id,
+                    "assignee_id": self.user.id,
+                    "target_model": version._name,
+                    "target_id": version.id,
+                    "last_comment": version.return_reason,
+                }
+            )
+
     def list_tasks(self, page, page_size, state=None):
+        # Repair returned versions created before submitter revision tasks existed.
+        self._ensure_returned_recipe_tasks()
         model = self.env["brew.task"].sudo()
         domain = [("company_id", "=", self.company.id), "|", ("assignee_id", "=", self.user.id), "&", ("assignee_id", "=", False), ("role_code", "in", list(self._role_codes()))]
         if state: domain += [("state", "=", state)]
@@ -24,7 +72,12 @@ class WorkflowService:
         return task
 
     def serialize_task(self, task):
-        return {"id": str(task.id), "name": task.name, "task_type": task.task_type, "role_code": task.role_code, "assignee": {"id": str(task.assignee_id.id), "name": task.assignee_id.name} if task.assignee_id else None, "priority": task.priority, "due_at": task.due_at.isoformat() if task.due_at else None, "state": task.state, "target_model": task.target_model, "target_id": str(task.target_id) if task.target_id else None, "last_comment": task.last_comment, "version": task.write_date.isoformat() if task.write_date else None}
+        name = task.name
+        if task.task_type == "demand_review" and task.target_model == "brew.product.demand" and task.target_id:
+            demand = self.env["brew.product.demand"].sudo().browse(task.target_id).exists()
+            if demand:
+                name = f"产品需求确认 · {demand.product_tmpl_id.name}"
+        return {"id": str(task.id), "name": name, "task_type": task.task_type, "role_code": task.role_code, "assignee": {"id": str(task.assignee_id.id), "name": task.assignee_id.name} if task.assignee_id else None, "priority": task.priority, "due_at": task.due_at.isoformat() if task.due_at else None, "state": task.state, "target_model": task.target_model, "target_id": str(task.target_id) if task.target_id else None, "last_comment": task.last_comment, "version": task.write_date.isoformat() if task.write_date else None}
 
     def task_action(self, task_id, action, payload):
         task = self._task(task_id)

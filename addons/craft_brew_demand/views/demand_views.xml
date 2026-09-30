@@ -7,6 +7,7 @@
                 <field name="name"/>
                 <field name="customer_id"/>
                 <field name="product_tmpl_id"/>
+                <field name="packaging_method"/>
                 <field name="packaging_id"/>
                 <field name="package_qty"/>
                 <field name="requested_volume_l"/>
@@ -33,6 +34,11 @@
                         </group>
                         <group>
                             <field name="product_tmpl_id"/>
+                            <field name="packaging_method"/>
+                            <field name="package_container_type" invisible="packaging_method != 'box'"/>
+                            <field name="package_unit_volume_l" invisible="packaging_method == 'other'"/>
+                            <field name="package_units_per_box" invisible="packaging_method != 'box'"/>
+                            <field name="packaging_description" invisible="packaging_method != 'other'"/>
                             <field name="packaging_id"/>
                             <field name="package_qty"/>
                             <field name="requested_volume_l"/>

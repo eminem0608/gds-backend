@@ -49,6 +49,12 @@ class ProductTemplate(models.Model):
     )
     brew_brand = fields.Char("品牌")
     brew_specification = fields.Char("规格")
+    brew_beer_category_id = fields.Many2one(
+        "brew.beer.category", string="啤酒大类", ondelete="restrict", index=True
+    )
+    brew_beer_subcategory_id = fields.Many2one(
+        "brew.beer.category", string="啤酒小类", ondelete="restrict", index=True
+    )
     brew_shelf_life_days = fields.Integer("保质期(天)", default=0)
     brew_extract_rate = fields.Float("浸出率/发酵度(%)")
     brew_color_ebc = fields.Float("色度(EBC)")

@@ -337,6 +337,18 @@ class BrewTank(models.Model):
     )
 
 
+class BrewProductionPlan(models.Model):
+    _inherit = "brew.production.plan"
+
+    source_production_batch_id = fields.Many2one(
+        "brew.production.batch",
+        string="参考生产批次工艺",
+        check_company=True,
+        ondelete="restrict",
+        index=True,
+    )
+
+
 class BrewProductionBatch(models.Model):
     _name = "brew.production.batch"
     _description = "Craft Brew Production Batch"

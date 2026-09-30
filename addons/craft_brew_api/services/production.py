@@ -349,6 +349,16 @@ class ProductionService:
                 "id": str(record.product_tmpl_id.id),
                 "name": record.product_tmpl_id.display_name,
             },
+            "brew_system": {
+                "id": str(record.recipe_version_id.recipe_id.equipment_id.id),
+                "name": record.recipe_version_id.recipe_id.equipment_id.display_name,
+            } if record.recipe_version_id.recipe_id.equipment_id else None,
+            "source_version": {
+                "id": str(record.recipe_version_id.id),
+                "number": record.recipe_version_id.version,
+                "label": f"基础工艺 V{record.recipe_version_id.version:02d}",
+            },
+            "equipment": {"id": str(record.production_plan_id.equipment_id.id), "name": record.production_plan_id.equipment_id.display_name},
             "tank": {"id": str(record.tank_id.id), "name": record.tank_id.name},
             "planned_volume_l": record.planned_volume_l,
             "actual_volume_l": record.actual_volume_l,

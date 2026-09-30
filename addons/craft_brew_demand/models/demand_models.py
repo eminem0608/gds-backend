@@ -34,6 +34,16 @@ class BrewProductDemand(models.Model):
         "product.packaging",
         domain="[('product_id.product_tmpl_id', '=', product_tmpl_id)]",
     )
+    packaging_method = fields.Selection(
+        [("keg", "桶装"), ("box", "箱装"), ("other", "其他")],
+        string="包装方式",
+    )
+    package_container_type = fields.Selection(
+        [("bottle", "瓶"), ("can", "罐")], string="箱内包装类型"
+    )
+    package_unit_volume_l = fields.Float("单桶或单瓶容量(L)")
+    package_units_per_box = fields.Integer("每箱数量")
+    packaging_description = fields.Char("其他包装说明")
     package_qty = fields.Float(required=True, default=1.0)
     requested_volume_l = fields.Float(required=True)
     requested_delivery_date = fields.Date(required=True, index=True)
@@ -68,6 +78,11 @@ class BrewProductDemand(models.Model):
         "customer_id",
         "product_tmpl_id",
         "packaging_id",
+        "packaging_method",
+        "package_container_type",
+        "package_unit_volume_l",
+        "package_units_per_box",
+        "packaging_description",
         "package_qty",
         "requested_volume_l",
         "requested_delivery_date",

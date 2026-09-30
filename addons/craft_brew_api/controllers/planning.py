@@ -12,6 +12,16 @@ class PlanningController(BrewApiController):
         if mutation: self._validate_cookie_csrf(mode)
         return user, company, PlanningService(request.env, user, company)
 
+    @http.route("/api/v1/production-plan-assignees", type="http", auth="public", methods=["GET"], csrf=False)
+    def production_plan_assignees(self):
+        request_id = self._request_id()
+        try:
+            _user, _company, service = self._planning_context()
+            data = service.assignees(request.httprequest.args.get("factory_id"))
+            return self._response(data, request_id=request_id)
+        except Exception as exc:
+            return self._error_response(exc, request_id)
+
     @http.route("/api/v1/production-plans", type="http", auth="public", methods=["GET", "POST"], csrf=False)
     def plans(self):
         request_id = self._request_id()

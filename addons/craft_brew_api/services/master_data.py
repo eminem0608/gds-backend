@@ -48,7 +48,7 @@ RESOURCE_CONFIG = {
             "craft_brew_core.group_brew_admin",
             "craft_brew_core.group_brew_production_director",
         ],
-        "fields": {"name", "default_code", "brew_item_type", "brew_brand", "brew_specification", "uom_id", "uom_po_id", "tracking", "standard_price"},
+        "fields": {"name", "default_code", "brew_item_type", "brew_brand", "brew_specification", "brew_beer_category_id", "brew_beer_subcategory_id", "uom_id", "uom_po_id", "tracking", "standard_price"},
     },
     "materials": {
         "model": "product.template",
@@ -195,6 +195,11 @@ class MasterDataService:
     def _values(self, resource, payload, create=False):
         config = self._config(resource)
         special_fields = {"tank_specs"} if resource == "equipment" else set()
+        if resource == "materials":
+            # Supplier catalog sends the selected commercial weight unit; this
+            # is translated to Odoo's uom_id/uom_po_id below, not stored as a
+            # product.template field.
+            special_fields.add("weight_uom")
         if resource == "suppliers":
             special_fields.update({"supplier_account_login", "supplier_account_password"})
         unknown = set(payload) - config["fields"] - {"version"} - special_fields
@@ -216,6 +221,8 @@ class MasterDataService:
             "product_id",
             "user_id",
             "parent_id",
+            "brew_beer_category_id",
+            "brew_beer_subcategory_id",
         }
         for field_name in relation_fields.intersection(values):
             values[field_name] = int(values[field_name]) if values[field_name] else False
@@ -279,6 +286,19 @@ class MasterDataService:
                     values.pop("standard_price", None)
             elif create and values.get("brew_item_type") not in {"semi_finished", "finished_product"}:
                 raise ApiError("VALIDATION_FORMAT", "产品类型必须是半成品或成品。", 422)
+            if values.get("brew_item_type") == "finished_product":
+                category_id = values.get("brew_beer_category_id")
+                subcategory_id = values.get("brew_beer_subcategory_id")
+                if not category_id or not subcategory_id:
+                    raise ApiError("VALIDATION_REQUIRED", "成品啤酒必须选择啤酒大类和小类。", 422)
+                category_model = self.env["brew.beer.category"].sudo()
+                category = category_model.search([("id", "=", category_id), ("active", "=", True), ("parent_id", "=", False)], limit=1)
+                subcategory = category_model.search([("id", "=", subcategory_id), ("active", "=", True), ("parent_id", "=", category_id)], limit=1)
+                if not category or not subcategory:
+                    raise ApiError("VALIDATION_FORMAT", "啤酒小类必须属于所选啤酒大类。", 422)
+            elif values.get("brew_item_type") == "semi_finished":
+                values["brew_beer_category_id"] = False
+                values["brew_beer_subcategory_id"] = False
         elif resource == "suppliers":
             values.update({"company_id": self.company.id, "supplier_rank": 1})
             if create:
@@ -452,7 +472,7 @@ class MasterDataService:
             return warehouse
         return warehouse_model.create(
             {
-                "name": "罐体仓",
+                "name": f"{factory.name}罐体仓",
                 "code": self._available_warehouse_code(f"{factory.code}-TANK"),
                 "company_id": self.company.id,
                 "brew_factory_id": factory.id,
@@ -477,7 +497,7 @@ class MasterDataService:
         if resource == "suppliers":
             if not record.brew_supplier_code:
                 record.brew_supplier_code = f"SUP-{record.id:06d}"
-            self._create_supplier_account(record, payload)
+            self._save_supplier_account(record, payload)
         if resource == "equipment":
             self._sync_equipment_tanks(record, payload)
         if resource == "factories" and not record.stock_warehouse_id:
@@ -495,16 +515,33 @@ class MasterDataService:
             self._ensure_tank_warehouse(record)
         return record, self.serialize(resource, record)
 
-    def _create_supplier_account(self, partner, payload):
+    def _save_supplier_account(self, partner, payload):
         login = str(payload.get("supplier_account_login") or "").strip()
         password = str(payload.get("supplier_account_password") or "")
-        if not login and not password:
-            return
-        if not login or len(password) < 8:
-            raise ApiError("VALIDATION_REQUIRED", "供应商账号和初始密码必须同时填写，密码至少 8 位。", 422)
         user_model = self.env["res.users"].sudo().with_context(active_test=False)
-        if user_model.search_count([("login", "=", login)]):
+        account = user_model.search([("brew_supplier_id", "=", partner.id)], limit=1)
+
+        if not account and not login and not password:
+            return
+        if not account and (not login or len(password) < 8):
+            raise ApiError("VALIDATION_REQUIRED", "供应商账号和初始密码必须同时填写，密码至少 8 位。", 422)
+        if account and not login:
+            login = account.login
+        if account and password and len(password) < 8:
+            raise ApiError("VALIDATION_FORMAT", "新密码至少 8 位。", 422)
+
+        duplicate_domain = [("login", "=", login)]
+        if account:
+            duplicate_domain.append(("id", "!=", account.id))
+        if user_model.search_count(duplicate_domain):
             raise ApiError("VALIDATION_DUPLICATE", "供应商账号已存在。", 422)
+        if account:
+            account_values = {"login": login, "name": partner.name}
+            if password:
+                account_values["password"] = password
+            account.write(account_values)
+            return
+
         internal_group = self.env.ref("base.group_user")
         supplier_group = self.env.ref("craft_brew_core.group_brew_supplier")
         user_model.with_context(no_reset_password=True).create({
@@ -525,9 +562,15 @@ class MasterDataService:
         if not expected or expected != current:
             raise ApiError("VERSION_CONFLICT", "数据版本不一致，请刷新后重试。", 409, {"current_version": current})
         values = self._values(resource, payload)
-        if not values:
+        has_supplier_account_update = resource == "suppliers" and (
+            "supplier_account_login" in payload or "supplier_account_password" in payload
+        )
+        if not values and not has_supplier_account_update:
             raise ApiError("VALIDATION_REQUIRED", "没有可更新的字段。", 422)
-        record.write(values)
+        if values:
+            record.write(values)
+        if resource == "suppliers" and has_supplier_account_update:
+            self._save_supplier_account(record, payload)
         if resource == "equipment":
             self._sync_equipment_tanks(record, payload)
         return record, self.serialize(resource, record)
