@@ -53,6 +53,15 @@ class PurchaseController(BrewApiController):
         except Exception as exc:
             return self._error_response(exc, request_id)
 
+    @http.route("/api/v1/purchase-requisitions/source-plans", type="http", auth="public", methods=["GET"], csrf=False)
+    def purchase_requisition_source_plans(self):
+        request_id = self._request_id()
+        try:
+            _user, _company, service = self._purchase_context(False)
+            return self._response(service.requisition_source_plans(), request_id=request_id)
+        except Exception as exc:
+            return self._error_response(exc, request_id)
+
     @http.route("/api/v1/purchase-requisitions/aggregate", type="http", auth="public", methods=["POST"], csrf=False)
     def aggregate_requisitions(self):
         request_id = self._request_id()

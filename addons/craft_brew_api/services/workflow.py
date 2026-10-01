@@ -1,3 +1,4 @@
+from odoo import fields
 from odoo.addons.craft_brew_core.services.role_service import ROLE_DEFINITIONS
 
 from ..controllers.base import ApiError
@@ -100,20 +101,70 @@ class WorkflowService:
         model = self.env["brew.approval.step"].sudo()
         domain = [("company_id", "=", self.company.id), ("role_code", "in", role_codes), "|", ("assignee_id", "=", False), ("assignee_id", "=", self.user.id)]
         if state: domain += [("state", "=", state)]
-        total = model.search_count(domain); records = model.search(domain, offset=(page - 1) * page_size, limit=page_size, order="instance_id desc,sequence")
-        return [self.serialize_approval(item) for item in records], total
+        records = model.search(domain, offset=(page - 1) * page_size, limit=page_size, order="instance_id desc,sequence")
+        current = []
+        for item in records:
+            instance = item.instance_id
+            target = self.env[instance.target_model].sudo().browse(instance.target_id).exists() if instance.target_model in self.env else None
+            current_instance = target.approval_instance_id if target and "approval_instance_id" in target._fields else target.brew_approval_instance_id if target and "brew_approval_instance_id" in target._fields else instance
+            if current_instance == instance:
+                current.append(item)
+        return [self.serialize_approval(item) for item in current], len(current)
 
     def serialize_approval(self, step):
         instance = step.instance_id
+        if instance.target_model == 'brew.purchase.requisition':
+            requisition = self.env[instance.target_model].sudo().browse(instance.target_id).exists()
+            if requisition:
+                return {'id': str(step.id), 'instance_id': str(instance.id), 'name': '采购需求审批 · ' + requisition.display_name, 'approval_type': instance.approval_type, 'request_type': requisition.request_type, 'role_code': step.role_code, 'sequence': step.sequence, 'state': step.state, 'instance_state': instance.state, 'comment': step.comment, 'target_model': instance.target_model, 'target_id': str(instance.target_id), 'version': step.write_date.isoformat() if step.write_date else None}
+        if instance.target_model == "purchase.order":
+            order = self.env["purchase.order"].sudo().browse(instance.target_id).exists()
+            if order:
+                return {"id": str(step.id), "instance_id": str(instance.id), "name": "采购订单审批 · " + order.display_name, "approval_type": instance.approval_type, "role_code": step.role_code, "sequence": step.sequence, "state": step.state, "instance_state": instance.state, "comment": step.comment or order.brew_approval_return_reason, "target_model": instance.target_model, "target_id": str(instance.target_id), "version": step.write_date.isoformat() if step.write_date else None}
         return {"id": str(step.id), "instance_id": str(instance.id), "name": instance.name, "approval_type": instance.approval_type, "role_code": step.role_code, "sequence": step.sequence, "state": step.state, "instance_state": instance.state, "comment": step.comment, "version": step.write_date.isoformat() if step.write_date else None}
 
     def approval_action(self, step_id, action, payload):
         step = self.env["brew.approval.step"].sudo().search([("id", "=", int(step_id)), ("company_id", "=", self.company.id)], limit=1)
         if not step or step.role_code not in self._role_codes(): raise ApiError("PERMISSION_DENIED", "无权处理该审批。", 403)
+        if step.instance_id.state != "pending" or step.state != "pending" or step.sequence != step.instance_id.current_sequence:
+            raise ApiError("STATE_PRECONDITION_FAILED", "该审批步骤已处理或不再处于当前审批环节。", 409)
         current = step.write_date.isoformat() if step.write_date else None
         if not payload.get("version") or payload["version"] != current: raise ApiError("VERSION_CONFLICT", "审批版本不一致。", 409, {"current_version": current})
-        if action == "approve": step.action_approve(self.user, payload.get("comment"))
-        elif action == "return": step.action_return(self.user, payload.get("comment"))
+        if action == "approve":
+            stale = self.env["brew.approval.instance"].sudo().search([
+                ("company_id", "=", self.company.id),
+                ("target_model", "=", step.instance_id.target_model),
+                ("target_id", "=", step.instance_id.target_id),
+                ("state", "=", "approved"),
+                ("id", "!=", step.instance_id.id),
+            ])
+            if stale:
+                stale.write({"state": "cancelled", "completed_at": fields.Datetime.now()})
+            step.action_approve(self.user, payload.get("comment"))
+            if step.instance_id.state == "approved":
+                instance = step.instance_id
+                if instance.target_model == "brew.purchase.requisition":
+                    target = self.env["brew.purchase.requisition"].sudo().browse(instance.target_id).exists()
+                    if target and target.state == 'submitted':
+                        target.action_approve()
+                elif instance.target_model == "purchase.order":
+                    target = self.env["purchase.order"].sudo().browse(instance.target_id).exists()
+                    if target and target.brew_approval_state == 'pending':
+                        target.action_brew_approve()
+        elif action == "return":
+            comment = str(payload.get("comment") or "").strip()
+            step.action_return(self.user, comment)
+            instance = step.instance_id
+            if instance.target_model == "brew.purchase.requisition":
+                target = self.env["brew.purchase.requisition"].sudo().browse(instance.target_id).exists()
+                if target and target.state == 'submitted':
+                    target.action_return(comment)
+                elif target and target.state == 'returned':
+                    target.write({"return_reason": comment})
+            elif instance.target_model == "purchase.order":
+                target = self.env["purchase.order"].sudo().browse(instance.target_id).exists()
+                if target and target.brew_approval_state == 'pending':
+                    target.write({"brew_approval_state": "returned", "brew_approval_return_reason": comment})
         elif action == "transfer":
             target = self.env["res.users"].sudo().search([("id", "=", int(payload.get("user_id") or 0)), ("company_ids", "in", [self.company.id]), ("active", "=", True)], limit=1)
             if not target: raise ApiError("RESOURCE_NOT_FOUND", "目标用户不存在。", 404)

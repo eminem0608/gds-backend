@@ -14,7 +14,14 @@ class BrewPurchaseRequisition(models.Model):
     )
     factory_id = fields.Many2one("brew.factory", required=True, check_company=True, index=True)
     need_date = fields.Date(required=True, index=True)
+    request_type = fields.Selection(
+        [("planned", "计划缺料"), ("emergency", "紧急采购")],
+        required=True,
+        default="planned",
+        index=True,
+    )
     reason = fields.Text()
+    emergency_reason = fields.Text()
     requester_id = fields.Many2one(
         "res.users", required=True, default=lambda self: self.env.user, check_company=True
     )
@@ -47,10 +54,55 @@ class BrewPurchaseRequisition(models.Model):
                 )
         return super().create(values_list)
 
+    @api.constrains("request_type", "emergency_reason")
+    def _check_emergency_reason(self):
+        for requisition in self:
+            if (
+                requisition.request_type == "emergency"
+                and not str(requisition.emergency_reason or "").strip()
+            ):
+                raise ValidationError("紧急采购必须填写紧急原因。")
+
     def action_submit(self, user):
         self.ensure_one()
+        if (
+            self.state == "submitted"
+            and self.approval_instance_id
+            and self.approval_instance_id.state == "pending"
+        ):
+            return self.approval_instance_id
+        if self.state == "submitted" and self.approval_instance_id and self.approval_instance_id.state == "returned":
+            returned_steps = self.approval_instance_id.step_ids.filtered(lambda step: step.state == "returned")
+            reason = returned_steps.sorted("sequence")[-1:].comment or self.return_reason or "Returned by approval."
+            self.write({"state": "returned", "return_reason": reason})
         if self.state not in {"draft", "returned"} or not self.line_ids:
             raise ValidationError("只有包含明细的草稿或退回采购需求可以提交。")
+        if self.state == "returned":
+            stale_instances = self.env["brew.approval.instance"].sudo().search(
+                [
+                    ("company_id", "=", self.company_id.id),
+                    ("target_model", "=", self._name),
+                    ("target_id", "=", self.id),
+                    ("state", "=", "pending"),
+                ]
+            )
+            for stale_instance in stale_instances:
+                pending_step = stale_instance.step_ids.filtered(
+                    lambda step: step.state == "pending"
+                    and step.sequence == stale_instance.current_sequence
+                )[:1]
+                if pending_step:
+                    pending_step.write({
+                        "state": "returned",
+                        "acted_by_id": user.id,
+                        "acted_at": fields.Datetime.now(),
+                        "comment": self.return_reason or "Returned before workflow synchronization.",
+                    })
+                stale_instance.write({
+                    "state": "returned",
+                    "completed_at": fields.Datetime.now(),
+                })
+            stale_instances.flush_recordset(["state"])
         total = sum(
             line.uom_id._compute_quantity(line.requested_qty, line.product_id.uom_id)
             * line.product_id.standard_price
@@ -67,7 +119,6 @@ class BrewPurchaseRequisition(models.Model):
             {
                 "state": "submitted",
                 "approval_instance_id": approval.id,
-                "return_reason": False,
             }
         )
         return approval
@@ -181,6 +232,7 @@ class PurchaseOrder(models.Model):
         required=True,
         index=True,
     )
+    brew_approval_return_reason = fields.Text(readonly=True)
     brew_placed_at = fields.Datetime(readonly=True)
     brew_close_reason = fields.Text(readonly=True)
     brew_supplier_shipment_ids = fields.One2many(
@@ -195,6 +247,38 @@ class PurchaseOrder(models.Model):
 
     def action_brew_submit(self, user):
         self.ensure_one()
+        if self.brew_approval_state == "pending" and self.brew_approval_instance_id and self.brew_approval_instance_id.state == "returned":
+            returned_steps = self.brew_approval_instance_id.step_ids.filtered(lambda step: step.state == "returned")
+            reason = returned_steps.sorted("sequence")[-1:].comment or self.brew_approval_return_reason or "Returned by approval."
+            self.write({"brew_approval_state": "returned", "brew_approval_return_reason": reason})
+        if self.brew_approval_state == "pending" and self.brew_approval_instance_id and self.brew_approval_instance_id.state == "pending":
+            return self.brew_approval_instance_id
+        if self.brew_approval_state == "returned":
+            stale_instances = self.env["brew.approval.instance"].sudo().search(
+                [
+                    ("company_id", "=", self.company_id.id),
+                    ("target_model", "=", "purchase.order"),
+                    ("target_id", "=", self.id),
+                    ("state", "=", "pending"),
+                ]
+            )
+            for stale_instance in stale_instances:
+                pending_step = stale_instance.step_ids.filtered(
+                    lambda step: step.state == "pending"
+                    and step.sequence == stale_instance.current_sequence
+                )[:1]
+                if pending_step:
+                    pending_step.write({
+                        "state": "returned",
+                        "acted_by_id": user.id,
+                        "acted_at": fields.Datetime.now(),
+                        "comment": self.brew_approval_return_reason or "Returned before workflow synchronization.",
+                    })
+                stale_instance.write({
+                    "state": "returned",
+                    "completed_at": fields.Datetime.now(),
+                })
+            stale_instances.flush_recordset(["state"])
         if self.state not in {"draft", "sent"} or self.brew_approval_state not in {
             "none",
             "returned",

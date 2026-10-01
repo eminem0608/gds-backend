@@ -83,6 +83,7 @@ class BrewStockDocumentMixin(models.AbstractModel):
             "location_dest_id": destination_location.id,
             "lot_id": lot.id if lot else False,
             "quantity": base_quantity,
+            "picked": True,
         }
         if move_line:
             move_line.write(line_values)
@@ -91,6 +92,8 @@ class BrewStockDocumentMixin(models.AbstractModel):
             self.env["stock.move.line"].sudo().create(line_values)
         if not picking:
             move._action_done()
+            if move.state != "done":
+                move._action_done()
         return move
 
 

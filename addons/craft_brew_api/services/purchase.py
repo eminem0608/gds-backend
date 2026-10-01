@@ -97,6 +97,30 @@ class PurchaseService:
                 {"current_version": current},
             )
 
+    def _pending_approval_step(self, instance):
+        if not instance or instance.state != 'pending':
+            raise ApiError('STATE_PRECONDITION_FAILED', 'No pending approval step for this document.', 409)
+        step = instance.step_ids.filtered(
+            lambda item: item.state == 'pending'
+            and item.sequence == instance.current_sequence
+        )[:1]
+        if not step:
+            raise ApiError('STATE_PRECONDITION_FAILED', 'No pending approval step for this document.', 409)
+        if step.role_code not in self.user.brew_role_codes():
+            raise ApiError('PERMISSION_DENIED', 'You cannot process this approval step.', 403)
+        return step
+
+    def _retire_duplicate_approved_instances(self, target_model, target_id, current_id):
+        stale = self.env["brew.approval.instance"].sudo().search([
+            ("company_id", "=", self.company.id),
+            ("target_model", "=", target_model),
+            ("target_id", "=", target_id),
+            ("state", "=", "approved"),
+            ("id", "!=", current_id),
+        ])
+        if stale:
+            stale.write({"state": "cancelled", "completed_at": fields.Datetime.now()})
+
     def _product(self, product_id):
         product = self.env["product.product"].sudo().search(
             [
@@ -122,9 +146,11 @@ class PurchaseService:
             "id": str(record.id),
             "name": record.name,
             "state": record.state,
+            "request_type": record.request_type,
             "factory": {"id": str(record.factory_id.id), "name": record.factory_id.name},
             "need_date": record.need_date.isoformat(),
             "reason": record.reason,
+            "emergency_reason": record.emergency_reason,
             "requester": {
                 "id": str(record.requester_id.id),
                 "name": record.requester_id.name,
@@ -178,8 +204,54 @@ class PurchaseService:
         )
         return [self._serialize_requisition(item) for item in records], total
 
+    def requisition_source_plans(self):
+        self._require_purchase()
+        plans = self.env["brew.production.plan"].sudo().search(
+            [
+                ("company_id", "=", self.company.id),
+                ("factory_id", "in", self._factory_ids()),
+                ("state", "in", ["approved", "dispatched", "in_progress"]),
+            ],
+            order="planned_start,id",
+            limit=100,
+        )
+        inventory = InventoryService(self.env, self.user, self.company)
+        result = []
+        for plan in plans:
+            shortage = inventory.plan_inventory(plan.id, reserve=False)
+            materials = [
+                item for item in shortage["materials"] if item["shortage"] > 0
+            ]
+            if not materials:
+                continue
+            result.append(
+                {
+                    "id": str(plan.id),
+                    "name": plan.name,
+                    "factory": {
+                        "id": str(plan.factory_id.id),
+                        "name": plan.factory_id.name,
+                    },
+                    "planned_start": (
+                        plan.planned_start.isoformat() if plan.planned_start else None
+                    ),
+                    "materials": materials,
+                    "shortage_items": len(materials),
+                }
+            )
+        return result
+
     def create_requisition(self, payload):
         self._require_purchase()
+        if payload.get("request_type") != "emergency":
+            raise ApiError(
+                "STATE_PRECONDITION_FAILED",
+                "普通采购需求必须由生产计划缺口汇总生成。",
+                422,
+            )
+        emergency_reason = str(payload.get("emergency_reason") or "").strip()
+        if not emergency_reason:
+            raise ApiError("VALIDATION_REQUIRED", "紧急采购必须填写紧急原因。", 422)
         factory = self._factory(payload.get("factory_id"))
         lines = payload.get("lines") or []
         if not payload.get("need_date") or not lines:
@@ -205,7 +277,9 @@ class PurchaseService:
                 "company_id": self.company.id,
                 "factory_id": factory.id,
                 "need_date": payload["need_date"],
+                "request_type": "emergency",
                 "reason": payload.get("reason"),
+                "emergency_reason": emergency_reason,
                 "requester_id": self.user.id,
                 "line_ids": commands,
             }
@@ -271,6 +345,7 @@ class PurchaseService:
                         "company_id": self.company.id,
                         "factory_id": factory_id,
                         "need_date": payload["need_date"],
+                        "request_type": "planned",
                         "reason": payload.get("reason") or "生产计划缺料汇总",
                         "requester_id": self.user.id,
                         "line_ids": line_commands,
@@ -286,9 +361,15 @@ class PurchaseService:
             record.action_submit(self.user)
         elif action == "approve":
             self._require_director()
-            record.action_approve()
+            step = self._pending_approval_step(record.approval_instance_id)
+            self._retire_duplicate_approved_instances(record._name, record.id, record.approval_instance_id.id)
+            step.action_approve(self.user, payload.get('comment'))
+            if record.approval_instance_id.state == 'approved':
+                record.action_approve()
         elif action == "return":
             self._require_director()
+            step = self._pending_approval_step(record.approval_instance_id)
+            step.action_return(self.user, payload.get('reason'))
             record.action_return(payload.get("reason"))
         else:
             raise ApiError("RESOURCE_NOT_FOUND", "采购需求动作不存在。", 404)
@@ -315,6 +396,7 @@ class PurchaseService:
             "name": record.name,
             "state": record.state,
             "approval_state": record.brew_approval_state,
+            "approval_return_reason": record.brew_approval_return_reason,
             "factory": (
                 {
                     "id": str(record.brew_factory_id.id),
@@ -333,6 +415,11 @@ class PurchaseService:
                 record.brew_placed_at.isoformat() if record.brew_placed_at else None
             ),
             "close_reason": record.brew_close_reason,
+            "procurement_type": (
+                next(iter(set(record.brew_requisition_ids.mapped("request_type"))), "planned")
+                if len(set(record.brew_requisition_ids.mapped("request_type"))) <= 1
+                else "mixed"
+            ),
             "requisition_ids": [str(item.id) for item in record.brew_requisition_ids],
             "approval_instance_id": (
                 str(record.brew_approval_instance_id.id)
@@ -419,6 +506,12 @@ class PurchaseService:
         requisition_ids = list(
             dict.fromkeys(int(item) for item in payload.get("requisition_ids") or [])
         )
+        if not requisition_ids:
+            raise ApiError(
+                "STATE_PRECONDITION_FAILED",
+                "采购订单必须由已批准的采购需求生成。",
+                422,
+            )
         requisitions = self.env["brew.purchase.requisition"].sudo().search(
             [
                 ("id", "in", requisition_ids),
@@ -427,8 +520,21 @@ class PurchaseService:
                 ("state", "=", "approved"),
             ]
         )
-        if requisition_ids and set(requisitions.ids) != set(requisition_ids):
+        if set(requisitions.ids) != set(requisition_ids):
             raise ApiError("STATE_PRECONDITION_FAILED", "采购需求无效或尚未批准。", 422)
+        if len(set(requisitions.mapped("request_type"))) > 1:
+            raise ApiError("VALIDATION_RELATION", "计划采购与紧急采购不能合并到同一订单。", 422)
+        valid_requisition_line_ids = set(requisitions.mapped("line_ids").ids)
+        for values in lines:
+            source_ids = {
+                int(item) for item in values.get("requisition_line_ids") or []
+            }
+            if not source_ids or not source_ids.issubset(valid_requisition_line_ids):
+                raise ApiError(
+                    "VALIDATION_RELATION",
+                    "采购订单每条明细都必须关联本单已批准的需求明细。",
+                    422,
+                )
         order = self.env["purchase.order"].sudo().create(
             {
                 "company_id": self.company.id,
@@ -459,6 +565,7 @@ class PurchaseService:
             raise ApiError("VALIDATION_REQUIRED", "请选择采购需求明细。", 422)
         normalized = []
         requisition_ids = set()
+        requisition_types = set()
         factory_id = None
         for values in line_requests:
             line = self.env["brew.purchase.requisition.line"].sudo().search(
@@ -472,6 +579,11 @@ class PurchaseService:
             if not line:
                 raise ApiError("STATE_PRECONDITION_FAILED", "采购需求明细无效。", 422)
             requisition_ids.add(line.requisition_id.id)
+            requisition_types.add(line.requisition_id.request_type)
+            if len(requisition_types) > 1:
+                raise ApiError(
+                    "VALIDATION_RELATION", "计划采购与紧急采购不能合并到同一订单。", 422
+                )
             factory_id = factory_id or line.requisition_id.factory_id.id
             if factory_id != line.requisition_id.factory_id.id:
                 raise ApiError("VALIDATION_RELATION", "一张采购订单只能对应一个厂区。", 422)
@@ -522,7 +634,11 @@ class PurchaseService:
             order.action_brew_submit(self.user)
         elif action == "approve":
             self._require_director()
-            order.action_brew_approve()
+            step = self._pending_approval_step(order.brew_approval_instance_id)
+            self._retire_duplicate_approved_instances(order._name, order.id, order.brew_approval_instance_id.id)
+            step.action_approve(self.user, payload.get('comment'))
+            if order.brew_approval_instance_id.state == 'approved':
+                order.action_brew_approve()
         elif action == "place":
             self._require_purchase()
             order.action_brew_place()
@@ -838,6 +954,10 @@ class PurchaseService:
             rejected = float(values.get("rejected_qty") or 0)
             if qualified < 0 or rejected < 0:
                 raise ApiError("VALIDATION_RANGE", "质检数量不能小于零。", 422)
+            if qualified + rejected > float(line.inspected_qty) + float(line.uom_id.rounding):
+                raise ApiError("VALIDATION_RANGE", f"{line.product_id.display_name} 的合格与不合格数量之和不能超过检验数量 {line.inspected_qty}。", 422)
+            if rejected and not values.get("disposition"):
+                raise ApiError("VALIDATION_REQUIRED", f"{line.product_id.display_name} 存在不合格数量，请选择退货或报损。", 422)
             line.write(
                 {
                     "qualified_qty": qualified,
