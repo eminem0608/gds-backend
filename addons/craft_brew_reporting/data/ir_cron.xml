@@ -3,6 +3,6 @@
         <field name="name">Craft Brew: process export jobs</field>
         <field name="model_id" ref="model_brew_export_job"/>
         <field name="state">code</field><field name="code">model._cron_process()</field>
-        <field name="interval_number">1</field><field name="interval_type">minutes</field><field name="active">True</field>
+        <field name="interval_number">1</field><field name="interval_type">minutes</field><field name="numbercall">-1</field><field name="active">True</field>
     </record>
 </odoo>
