@@ -1,5 +1,10 @@
 import json
 import math
+from types import SimpleNamespace
+from datetime import datetime, timezone
+
+from odoo import Command, fields
+from .inventory import InventoryService
 
 from ..controllers.base import ApiError
 from .recipe_design import design_values
@@ -16,6 +21,8 @@ class PlanningService:
                 "craft_brew_core.group_brew_general_manager",
                 "craft_brew_core.group_brew_production_director",
                 "craft_brew_core.group_brew_admin",
+                "craft_brew_core.group_brew_operator",
+                "craft_brew_core.group_brew_warehouse",
             }
         ):
             raise ApiError("PERMISSION_DENIED", "当前账号无权查看生产计划。", 403)
@@ -44,6 +51,12 @@ class PlanningService:
         )
         if not plan:
             raise ApiError("RESOURCE_NOT_FOUND", "生产计划不存在。", 404)
+        privileged = self.user.has_group("craft_brew_core.group_brew_admin") or self.user.has_group("craft_brew_core.group_brew_general_manager")
+        if not privileged and plan.factory_id not in self.user.brew_factory_ids:
+            raise ApiError("DATA_SCOPE_DENIED", "计划不在当前账号厂区范围内。", 403)
+        if self.user.has_group("craft_brew_core.group_brew_operator") and not any(self.user.has_group(group) for group in {"craft_brew_core.group_brew_admin", "craft_brew_core.group_brew_general_manager", "craft_brew_core.group_brew_production_director"}):
+            if self.user not in (plan.mash_owner_id | plan.fermentation_owner_id):
+                raise ApiError("PERMISSION_DENIED", "只能查看分配给自己的生产批次。", 403)
         return plan
 
     def _check_version(self, record, expected):
@@ -73,13 +86,20 @@ class PlanningService:
             "cancel_reason": plan.cancel_reason,
             "version": plan.write_date.isoformat() if plan.write_date else None,
         }
+        batch = self.env["brew.production.batch"].sudo().search([("production_plan_id", "=", plan.id)], limit=1)
+        data["batch"] = {"id": str(batch.id), "name": batch.name, "state": batch.state} if batch else None
         if detail:
+            data["stocking_request"] = json.loads(plan.stocking_request_json or "{}")
             data.update({"resource_check": json.loads(plan.resource_check_json or "{}"), "recipe_snapshot": json.loads(plan.recipe_snapshot_json or "{}"), "material_snapshot": json.loads(plan.material_snapshot_json or "[]"), "production_design": json.loads(plan.production_design_json or "{}")})
         return data
 
     def list(self, page, page_size, state=None):
         model = self.env["brew.production.plan"].sudo()
         domain = [("company_id", "=", self.company.id)]
+        if not (self.user.has_group("craft_brew_core.group_brew_admin") or self.user.has_group("craft_brew_core.group_brew_general_manager")):
+            domain.append(("factory_id", "in", self.user.brew_factory_ids.ids))
+        if not any(self.user.has_group(group) for group in {"craft_brew_core.group_brew_admin", "craft_brew_core.group_brew_general_manager", "craft_brew_core.group_brew_production_director"}):
+            domain += ["|", ("mash_owner_id", "=", self.user.id), ("fermentation_owner_id", "=", self.user.id)]
         if state:
             domain += [("state", "=", state)]
         total = model.search_count(domain)
@@ -227,6 +247,17 @@ class PlanningService:
             raise ApiError("VALIDATION_RELATION", "参考批次必须沿用它实际使用的基础工艺版本。", 422)
         return factory, version, equipment, tank, source_batch
 
+    def _plan_datetime(self, value, label):
+        if not value:
+            raise ApiError("VALIDATION_REQUIRED", f"{label}不能为空。", 422)
+        try:
+            parsed = value if isinstance(value, datetime) else datetime.fromisoformat(str(value).replace("Z", "+00:00"))
+            if parsed.tzinfo:
+                parsed = parsed.astimezone(timezone.utc).replace(tzinfo=None)
+            return parsed
+        except (TypeError, ValueError):
+            raise ApiError("VALIDATION_FORMAT", f"{label}格式无效，请重新选择日期和时间。", 422)
+
     def create(self, payload):
         self._require_manage()
         factory, version, equipment, tank, source_batch = self._relations(payload)
@@ -248,11 +279,17 @@ class PlanningService:
         ]):
             raise ApiError("VALIDATION_DUPLICATE", "该需求已有生产计划，请勿重复创建。", 422)
         plan = self.env["brew.production.plan"].sudo().create(
-            {"company_id": self.company.id, "factory_id": factory.id, "demand_id": demand.id or False, "product_tmpl_id": version.recipe_id.product_tmpl_id.id, "recipe_version_id": version.id, "source_production_batch_id": source_batch.id or False, "planned_volume_l": float(payload.get("planned_volume_l") or 0), "planned_start": payload.get("planned_start"), "planned_end": payload.get("planned_end"), "equipment_id": equipment.id, "tank_id": tank.id, "owner_id": owner.id or False, "mash_owner_id": mash_owner.id, "fermentation_owner_id": fermentation_owner.id, "production_design_json": json.dumps(payload.get("production_design") or {}, ensure_ascii=False)}
+            {"company_id": self.company.id, "factory_id": factory.id, "demand_id": demand.id or False, "product_tmpl_id": version.recipe_id.product_tmpl_id.id, "recipe_version_id": version.id, "source_production_batch_id": source_batch.id or False, "planned_volume_l": float(payload.get("planned_volume_l") or 0), "planned_start": self._plan_datetime(payload.get("planned_start"), "计划开始时间"), "planned_end": self._plan_datetime(payload.get("planned_end"), "预计结束时间"), "equipment_id": equipment.id, "tank_id": tank.id, "owner_id": owner.id or False, "mash_owner_id": mash_owner.id, "fermentation_owner_id": fermentation_owner.id, "production_design_json": json.dumps(payload.get("production_design") or {}, ensure_ascii=False)}
         )
         if payload.get("production_design"):
             snapshot, calculation = self._production_recipe_snapshot(plan, payload["production_design"])
             plan.with_context(brew_state_transition=True).write({"recipe_snapshot_json": json.dumps(snapshot, ensure_ascii=False), "material_snapshot_json": json.dumps(calculation, ensure_ascii=False)})
+        if not payload.get("production_design"):
+            plan.expand_materials()
+        self.env["brew.production.batch"].sudo().create({"production_plan_id": plan.id})
+        plan.ensure_execution_tasks()
+        if payload.get("submit_stock_request"):
+            self.request_stock(plan)
         return plan, self.serialize(plan, True)
 
     def update(self, plan_id, payload):
@@ -261,6 +298,8 @@ class PlanningService:
         self._check_version(plan, payload.get("version"))
         allowed = {"planned_volume_l", "planned_start", "planned_end", "owner_id", "mash_owner_id", "fermentation_owner_id"}
         values = {key: payload[key] for key in allowed if key in payload}
+        for key, label in [("planned_start", "计划开始时间"), ("planned_end", "预计结束时间")]:
+            if key in values: values[key] = self._plan_datetime(values[key], label)
         if any(key in payload for key in {"factory_id", "recipe_version_id", "source_production_batch_id", "equipment_id", "tank_id"}):
             merged = {"factory_id": plan.factory_id.id, "recipe_version_id": plan.recipe_version_id.id, "source_production_batch_id": plan.source_production_batch_id.id or False, "equipment_id": plan.equipment_id.id, "tank_id": plan.tank_id.id, **payload}
             factory, version, equipment, tank, source_batch = self._relations(merged)
@@ -291,6 +330,8 @@ class PlanningService:
 
     def action(self, plan_id, action, payload):
         plan = self._record(plan_id)
+        self.env.cr.execute("SELECT id FROM brew_production_plan WHERE id = %s FOR UPDATE", [plan.id])
+        plan.invalidate_recordset()
         self._check_version(plan, payload.get("version"))
         if action == "approve":
             self._require_approve()
@@ -302,15 +343,127 @@ class PlanningService:
         if action == "expand-materials":
             result = plan.expand_materials()
             return plan, {**self.serialize(plan, True), "calculation": result}
-        if action == "submit": plan.action_submit(self.user)
+        if action == "request-stock": self.request_stock(plan)
+        elif action == "complete-stock":
+            if plan.state != "stocking":
+                raise ApiError("STATE_PRECONDITION_FAILED", "当前计划不在备货阶段。", 422)
+            inventory = InventoryService(self.env, self.user, self.company)
+            result = inventory.plan_inventory(plan.id)
+            if not result["ok"]:
+                raise ApiError("INVENTORY_INSUFFICIENT", "原料仍然不足，请先完成采购入库。", 409, result)
+            request = json.loads(plan.stocking_request_json or "{}")
+            request["completed_at"] = fields.Datetime.now().isoformat()
+            plan.with_context(brew_state_transition=True).write({"state": "draft", "stocking_request_json": json.dumps(request, ensure_ascii=False)})
+        elif action in {"submit", "dispatch"}:
+            self._dispatch_directly(plan)
         elif action == "approve": plan.action_approve()
-        elif action == "dispatch": plan.action_dispatch()
         elif action == "cancel": plan.action_cancel(payload.get("reason"))
         elif action == "terminate": plan.action_terminate(payload.get("reason"))
         else: raise ApiError("RESOURCE_NOT_FOUND", "生产计划动作不存在。", 404)
         return plan, self.serialize(plan, True)
 
+    def _dispatch_directly(self, plan):
+        # Validate and reserve in the same transaction as dispatch. Legacy
+        # pending approvals are retired only after all checks succeed.
+        self.env.cr.execute("SELECT id FROM brew_production_plan WHERE id = %s FOR UPDATE", [plan.id])
+        plan.invalidate_recordset()
+        if plan.state not in {"draft", "checked", "pending_approval", "approved"}:
+            raise ApiError("STATE_PRECONDITION_FAILED", "只有未下发且已完成备货的计划可以下发。", 422)
+        if not plan.mash_owner_id or not plan.fermentation_owner_id:
+            raise ApiError("VALIDATION_REQUIRED", "请先指定糖化和发酵负责人。", 422)
+        if plan.state in {"pending_approval", "approved"}:
+            plan.with_context(brew_state_transition=True).write({"state": "draft"})
+        result = plan.check_resources()
+        if not result["ok"]:
+            names = "、".join(item["name"] for item in result["conflicts"])
+            raise ApiError("RESOURCE_CONFLICT", f"生产安排存在冲突：{names}。请调整生产时间、设备或罐体后重新下发。", 409, result)
+        InventoryService(self.env, self.user, self.company).plan_inventory(plan.id, reserve=True)
+        approval = plan.approval_instance_id
+        if approval and approval.state not in {"cancelled", "returned"}:
+            approval.write({"state": "cancelled", "completed_at": fields.Datetime.now()})
+        plan.with_context(brew_state_transition=True).write({"state": "approved", "approval_instance_id": False})
+        plan.action_dispatch()
+
+    def request_stock(self, plan):
+        if plan.state not in {"draft", "checked"}:
+            raise ApiError("STATE_PRECONDITION_FAILED", "只有未下发计划可以提交备货需求。", 422)
+        inventory = InventoryService(self.env, self.user, self.company)
+        result = inventory.plan_inventory(plan.id)
+        shortages = [item for item in result["materials"] if item["shortage"] > 0]
+        if not shortages:
+            raise ApiError("STATE_PRECONDITION_FAILED", "原料库存充足，无需提交备货需求。", 422)
+        lines = []
+        for item in shortages:
+            product = self.env["product.product"].sudo().browse(int(item["product"]["id"]))
+            lines.append(Command.create({"product_id": product.id, "requested_qty": item["shortage"], "uom_id": product.uom_id.id, "allocation_ids": [Command.create({"production_plan_id": plan.id, "required_qty": item["required"], "shortage_qty": item["shortage"], "uom_id": product.uom_id.id})]}))
+        requisition = self.env["brew.purchase.requisition"].sudo().create({"company_id": self.company.id, "factory_id": plan.factory_id.id, "need_date": plan.planned_start.date(), "requester_id": self.user.id, "request_type": "planned", "reason": f"{plan.name} 原料备货", "line_ids": lines})
+        requisition.action_submit(self.user)
+        request = {"requisition_id": str(requisition.id), "name": requisition.name, "submitted_at": fields.Datetime.now().isoformat(), "submitted_by": self.user.name, "materials": shortages}
+        plan.with_context(brew_state_transition=True).write({"state": "stocking", "stocking_request_json": json.dumps(request, ensure_ascii=False)})
+
+    def preview_inventory(self, payload):
+        self._require_manage()
+        inventory = InventoryService(self.env, self.user, self.company)
+        factory = inventory._factory(payload.get("factory_id"))
+        version = self.env["brew.recipe.version"].sudo().search([("id", "=", int(payload.get("recipe_version_id") or 0)), ("company_id", "=", self.company.id)], limit=1)
+        source = self.env["brew.production.batch"].sudo().search([("id", "=", int(payload.get("source_production_batch_id") or 0)), ("company_id", "=", self.company.id), ("state", "in", ["in_tank", "completed"])], limit=1)
+        if not version or version.recipe_id.equipment_id.brew_factory_id != factory or (source and (source.factory_id != factory or source.recipe_version_id != version)):
+            raise ApiError("VALIDATION_RELATION", "配方或历史批次与厂区不一致。", 422)
+        if payload.get("source_production_batch_id") and not source:
+            raise ApiError("RESOURCE_NOT_FOUND", "历史批次不存在。", 404)
+        volume = float(payload.get("planned_volume_l") or 0)
+        if not math.isfinite(volume) or volume <= 0:
+            raise ApiError("VALIDATION_RANGE", "请填写有效计划产量。", 422)
+        design = payload.get("production_design")
+        if design:
+            plan = SimpleNamespace(recipe_version_id=version, source_production_batch_id=source, planned_volume_l=volume, name="库存预览")
+            _, calculation = self._production_recipe_snapshot(plan, self._scale_production_design(design, volume))
+        elif source:
+            calculation = json.loads(source.material_snapshot_json or "{}")
+            ratio = volume / source.planned_volume_l
+            calculation["materials"] = [{**line, "quantity": float(line.get("quantity") or 0) * ratio} for line in calculation.get("materials", [])]
+        else:
+            calculation = version.calculate(volume)
+        result = inventory.material_availability(calculation.get("materials", []), factory)
+        demand_inventory = None
+        if payload.get("demand_id"):
+            demand = self.env["brew.product.demand"].sudo().search([("id", "=", int(payload["demand_id"])), ("company_id", "=", self.company.id), ("state", "=", "confirmed")], limit=1)
+            if not demand or demand.product_tmpl_id != version.recipe_id.product_tmpl_id or (demand.factory_id and demand.factory_id != factory):
+                raise ApiError("VALIDATION_RELATION", "来源需求与产品或厂区不一致。", 422)
+            product = demand.product_tmpl_id.product_variant_id
+            candidates = inventory._candidate_stock(product, factory) if product else []
+            available_l = 0.0
+            unknown = not bool(product)
+            for candidate in candidates:
+                order = self.env["brew.packaging.order"].sudo().search([("company_id", "=", self.company.id), ("finished_lot_id", "=", candidate["lot"].id), ("state", "=", "released")], limit=1)
+                if order and order.output_qty > 0:
+                    if not demand.packaging_id or order.packaging_id == demand.packaging_id:
+                        available_l += candidate["quantity"] * order.output_volume_l / order.output_qty
+                else:
+                    unknown = True
+            demand_inventory = {"product": demand.product_tmpl_id.name, "required_l": demand.requested_volume_l, "available_l": available_l, "shortage_l": max(demand.requested_volume_l - available_l, 0), "unknown_packaging": unknown, "delivery_date": demand.requested_delivery_date.isoformat() if demand.requested_delivery_date else None}
+        return {"ok": all(item["shortage"] <= 0 for item in result), "materials": result, "demand_inventory": demand_inventory}
+
     def progress(self, plan_id):
+        from .workflow import WorkflowService
         plan = self._record(plan_id)
-        tasks = self.env["brew.task"].sudo().search([("target_model", "=", plan._name), ("target_id", "=", plan.id)])
-        return {"plan": self.serialize(plan), "tasks": [{"id": str(task.id), "name": task.name, "type": task.task_type, "state": task.state, "assignee": task.assignee_id.name if task.assignee_id else None} for task in tasks], "approval": {"id": str(plan.approval_instance_id.id), "state": plan.approval_instance_id.state} if plan.approval_instance_id else None}
+        tasks = self.env["brew.task"].sudo().search([("target_model", "=", plan._name), ("target_id", "=", plan.id)], order="id")
+        workflow = WorkflowService(self.env, self.user, self.company)
+        timeline = [{"at": plan.create_date.isoformat(), "title": "创建生产计划", "by": plan.create_uid.name}]
+        request = json.loads(plan.stocking_request_json or "{}")
+        for key, title in [("submitted_at", "提交原料备货需求"), ("completed_at", "原料备货完成")]:
+            if request.get(key): timeline.append({"at": request[key], "title": title, "by": request.get("submitted_by", "")})
+        if plan.dispatched_at: timeline.append({"at": plan.dispatched_at.isoformat(), "title": "生产计划已下发", "by": ""})
+        for task in tasks:
+            for key, title in [("claimed_at", "领取任务"), ("started_at", "开始执行"), ("completed_at", "完成任务")]:
+                at = task[key]
+                if at: timeline.append({"at": at.isoformat(), "title": f"{task.name} · {title}", "by": task.assignee_id.name or ""})
+            for node in task.mash_execution_checkpoints():
+                if node.get("completed_at"): timeline.append({"at": node["completed_at"], "title": node.get("title"), "by": node.get("completed_by"), "value": node.get("value")})
+        batch = self.env["brew.production.batch"].sudo().search([("production_plan_id", "=", plan.id)], limit=1)
+        if batch:
+            records = self.env["brew.production.record"].sudo().search([("batch_id", "=", batch.id)], order="recorded_at,id")
+            for record in records:
+                timeline.append({"at": record.recorded_at.isoformat(), "title": record.name, "by": record.operator_id.name, "state": record.state})
+        timeline.sort(key=lambda item: item["at"])
+        return {"plan": self.serialize(plan, True), "tasks": [workflow.serialize_task(task) for task in tasks], "timeline": timeline, "can_manage": self.user.has_group("craft_brew_core.group_brew_production_director") or self.user.has_group("craft_brew_core.group_brew_admin"), "approval": {"id": str(plan.approval_instance_id.id), "state": plan.approval_instance_id.state} if plan.approval_instance_id else None}

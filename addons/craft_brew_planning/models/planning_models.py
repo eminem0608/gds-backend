@@ -25,13 +25,14 @@ class BrewProductionPlan(models.Model):
     mash_owner_id = fields.Many2one("res.users", check_company=True, index=True)
     fermentation_owner_id = fields.Many2one("res.users", check_company=True, index=True)
     state = fields.Selection(
-        [("draft", "草稿"), ("checked", "已校验"), ("pending_approval", "待审批"), ("approved", "已批准"), ("dispatched", "已下发"), ("in_progress", "执行中"), ("done", "已完成"), ("cancelled", "已取消"), ("terminated", "已终止")],
+        [("draft", "草稿"), ("checked", "已校验"), ("stocking", "备货中"), ("pending_approval", "待审批"), ("approved", "已批准"), ("dispatched", "已下发"), ("in_progress", "执行中"), ("done", "已完成"), ("cancelled", "已取消"), ("terminated", "已终止")],
         required=True, default="draft", index=True,
     )
     recipe_snapshot_json = fields.Text(default="{}", readonly=True)
     material_snapshot_json = fields.Text(default="[]", readonly=True)
     production_design_json = fields.Text(default="{}", readonly=True)
     resource_check_json = fields.Text(default="{}", readonly=True)
+    stocking_request_json = fields.Text(default="{}", readonly=True)
     approval_instance_id = fields.Many2one("brew.approval.instance", check_company=True)
     dispatched_at = fields.Datetime()
     cancel_reason = fields.Text()
@@ -79,6 +80,8 @@ class BrewProductionPlan(models.Model):
 
     def check_resources(self):
         self.ensure_one()
+        if self.state not in {"draft", "checked"}:
+            raise ValidationError("只有草稿或已校验计划可以重新校验资源。")
         conflicts = []
         plan_domain = [
             ("id", "!=", self.id),
@@ -87,12 +90,14 @@ class BrewProductionPlan(models.Model):
             ("planned_end", ">", self.planned_start),
         ]
         for other in self.search(plan_domain + ["|", ("equipment_id", "=", self.equipment_id.id), ("tank_id", "=", self.tank_id.id)]):
-            conflicts.append({"type": "production_plan", "id": str(other.id), "name": other.name})
+            conflicts.append({"type": "production_plan", "id": str(other.id), "name": other.name,
+                              "reason": "、".join(label for matches, label in [(other.equipment_id == self.equipment_id, "酿造设备占用"), (other.tank_id == self.tank_id, "罐体占用")] if matches),
+                              "start_at": other.planned_start.isoformat(), "end_at": other.planned_end.isoformat()})
         unavailable = self.env["brew.equipment.unavailability"].search(
             [("equipment_id", "=", self.equipment_id.id), ("state", "=", "active"), ("start_at", "<", self.planned_end), ("end_at", ">", self.planned_start)]
         )
         for period in unavailable:
-            conflicts.append({"type": "equipment_unavailability", "id": str(period.id), "name": period.name})
+            conflicts.append({"type": "equipment_unavailability", "id": str(period.id), "name": period.name, "reason": "设备维修或停用", "start_at": period.start_at.isoformat(), "end_at": period.end_at.isoformat()})
         result = {"ok": not conflicts, "conflicts": conflicts, "checked_at": fields.Datetime.now().isoformat()}
         self.with_context(brew_state_transition=True).write({"resource_check_json": json.dumps(result, ensure_ascii=False), "state": "checked" if not conflicts else "draft"})
         return result
@@ -166,16 +171,28 @@ class BrewProductionPlan(models.Model):
             raise ValidationError("只有已批准计划可以下发。")
         if not self.mash_owner_id or not self.fermentation_owner_id:
             raise ValidationError("下发生产计划前必须指定糖化负责人和发酵负责人。")
-        tasks = [
-            {"name": f"{self.name} 糖化执行", "task_type": "mashing", "role_code": "operator", "assignee_id": self.mash_owner_id.id},
-            {"name": f"{self.name} 发酵执行", "task_type": "fermentation", "role_code": "operator", "assignee_id": self.fermentation_owner_id.id},
-            {"name": f"{self.name} 备料", "task_type": "material_preparation", "role_code": "warehouse_keeper"},
-        ]
-        for values in tasks:
-            self.env["brew.task"].create({**values, "company_id": self.company_id.id, "factory_id": self.factory_id.id, "target_model": self._name, "target_id": self.id, "due_at": self.planned_start})
+        self.ensure_execution_tasks()
+        batch = self.env["brew.production.batch"].sudo().search([("production_plan_id", "=", self.id)], limit=1)
+        if batch:
+            batch.write({"recipe_snapshot_json": self.recipe_snapshot_json, "material_snapshot_json": self.material_snapshot_json})
         self.with_context(brew_state_transition=True).write({"state": "dispatched", "dispatched_at": fields.Datetime.now()})
         if self.demand_id:
             self.demand_id.action_mark_planned()
+        return True
+
+    def ensure_execution_tasks(self):
+        self.ensure_one()
+        tasks = self.env["brew.task"].sudo()
+        for task_type, label, role, assignee in [
+            ("mashing", "糖化执行", "operator", self.mash_owner_id.id),
+            ("fermentation", "发酵执行", "operator", self.fermentation_owner_id.id),
+            ("material_preparation", "备料", "warehouse_keeper", False),
+        ]:
+            existing = tasks.search([("target_model", "=", self._name), ("target_id", "=", self.id), ("task_type", "=", task_type), ("state", "!=", "cancelled")], limit=1)
+            if not existing:
+                existing = tasks.create({"name": f"{self.name} {label}", "task_type": task_type, "role_code": role, "assignee_id": assignee, "company_id": self.company_id.id, "factory_id": self.factory_id.id, "target_model": self._name, "target_id": self.id, "due_at": self.planned_start})
+            if task_type == "mashing":
+                existing.mash_execution_checkpoints()
         return True
 
     def action_cancel(self, reason):

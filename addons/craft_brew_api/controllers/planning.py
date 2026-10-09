@@ -12,6 +12,15 @@ class PlanningController(BrewApiController):
         if mutation: self._validate_cookie_csrf(mode)
         return user, company, PlanningService(request.env, user, company)
 
+    @http.route("/api/v1/production-plan-inventory-preview", type="http", auth="public", methods=["POST"], csrf=False)
+    def inventory_preview(self):
+        request_id = self._request_id()
+        try:
+            _user, _company, service = self._planning_context(True)
+            return self._response(service.preview_inventory(self._json_body()), request_id=request_id)
+        except Exception as exc:
+            return self._error_response(exc, request_id)
+
     @http.route("/api/v1/production-plan-assignees", type="http", auth="public", methods=["GET"], csrf=False)
     def production_plan_assignees(self):
         request_id = self._request_id()
@@ -65,6 +74,8 @@ class PlanningController(BrewApiController):
         request_id = self._request_id()
         try:
             allowed = {
+                "request-stock",
+                "complete-stock",
                 "check-resources",
                 "expand-materials",
                 "check-inventory",
@@ -77,6 +88,7 @@ class PlanningController(BrewApiController):
                 "terminate",
             }
             if action not in allowed: raise ApiError("RESOURCE_NOT_FOUND", "生产计划动作不存在。", 404)
+            if action == "submit": action = "dispatch"
             payload = self._json_body(); user, company, service = self._planning_context(True)
             idem, replay = self._start_idempotency(user, company, payload)
             if replay: return replay

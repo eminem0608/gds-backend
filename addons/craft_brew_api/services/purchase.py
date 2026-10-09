@@ -133,6 +133,8 @@ class PurchaseService:
         )
         if not product:
             raise ApiError("RESOURCE_NOT_FOUND", "采购物料不存在。", 404)
+        if product.brew_item_type == "packaging_material" and product.brew_packaging_state and product.brew_packaging_state != "confirmed":
+            raise ApiError("STATE_PRECONDITION_FAILED", "该包装商品尚未经过酒厂确认，不能采购。", 422)
         return product
 
     def _uom(self, uom_id, product):

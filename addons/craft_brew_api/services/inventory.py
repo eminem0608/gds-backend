@@ -522,6 +522,27 @@ class InventoryService:
             materials = snapshot.get("materials", [])
         return materials
 
+    def _group_plan_materials(self, materials):
+        grouped = {}
+        for material in materials:
+            product = self._product(material.get("material_id"))
+            uom = self.env["uom.uom"].sudo().browse(int(material.get("uom_id") or 0)).exists()
+            if not uom or uom.category_id != product.uom_id.category_id:
+                raise ApiError("VALIDATION_RELATION", "计划物料单位无效。", 422)
+            quantity = uom._compute_quantity(float(material.get("quantity") or 0), product.uom_id, round=False)
+            row = grouped.setdefault(product.id, {"material_id": str(product.id), "uom_id": str(product.uom_id.id), "quantity": 0})
+            row["quantity"] += quantity
+        return list(grouped.values())
+
+    def material_availability(self, materials, factory, excluded_source=None):
+        results = []
+        for material in self._group_plan_materials(materials):
+            product = self._product(material["material_id"])
+            required = material["quantity"]
+            available = sum(item["quantity"] for item in self._candidate_stock(product, factory, excluded_source=excluded_source))
+            results.append({"product": {"id": str(product.id), "name": product.display_name}, "required": required, "available": available, "allocated": min(required, available), "shortage": max(required - available, 0), "uom": product.uom_id.name})
+        return results
+
     def plan_inventory(self, plan_id, reserve=False, expires_at=None):
         plan = self._plan(plan_id)
         if reserve and not (
@@ -544,12 +565,12 @@ class InventoryService:
             existing.action_release()
         results = []
         commands = []
-        for material in self._plan_materials(plan):
+        for material in self._group_plan_materials(self._plan_materials(plan)):
             product = self._product(material.get("material_id"))
             uom = self.env["uom.uom"].sudo().browse(int(material.get("uom_id") or 0)).exists()
             if not uom or uom.category_id != product.uom_id.category_id:
                 raise ApiError("VALIDATION_RELATION", "计划物料单位无效。", 422)
-            required = uom._compute_quantity(float(material.get("quantity") or 0), product.uom_id)
+            required = uom._compute_quantity(float(material.get("quantity") or 0), product.uom_id, round=False)
             remaining = required
             allocations = []
             for candidate in self._candidate_stock(
@@ -592,7 +613,7 @@ class InventoryService:
                         }
                     )
                 remaining -= take
-                if remaining <= product.uom_id.rounding:
+                if remaining <= 1e-8:
                     remaining = 0
                     break
             results.append(

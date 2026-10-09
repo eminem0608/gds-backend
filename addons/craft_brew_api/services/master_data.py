@@ -63,7 +63,7 @@ RESOURCE_CONFIG = {
     "material-categories": {
         "model": "brew.material.category",
         "write_groups": ["craft_brew_core.group_brew_admin"],
-        "fields": {"name", "code", "material_group", "parent_id", "sequence"},
+        "fields": {"name", "code", "material_group", "parent_id", "sequence", "brew_packaging_type"},
     },
     "beer-categories": {
         "model": "brew.beer.category",
@@ -134,6 +134,8 @@ class MasterDataService:
             "beer-categories": [("active", "=", True)],
         }
         domain = domains[resource]
+        if resource == "materials" and not self.user.has_group("craft_brew_core.group_brew_supplier"):
+            domain += ["|", ("brew_item_type", "!=", "packaging_material"), "|", ("brew_packaging_state", "=", False), ("brew_packaging_state", "=", "confirmed")]
         if resource == "materials" and self.user.has_group("craft_brew_core.group_brew_supplier"):
             domain += [("brew_supplier_id", "=", self.user.brew_supplier_id.id)]
         if resource in {"factories", "equipment", "tanks", "warehouses", "locations"} and not (
@@ -354,6 +356,10 @@ class MasterDataService:
             )
             if duplicate:
                 raise ApiError("VALIDATION_DUPLICATE", "产品或物料编码已存在。", 422)
+        if resource == "material-categories" and values.get("brew_packaging_type"):
+            from .packaging import TYPES
+            if values["brew_packaging_type"] not in TYPES:
+                raise ApiError("VALIDATION_FORMAT", "包装表单类型无效。", 422)
         if resource in {"material-categories", "beer-categories"}:
             label = "原料种类" if resource == "material-categories" else "啤酒分类"
             model_name = "brew.material.category" if resource == "material-categories" else "brew.beer.category"
@@ -656,6 +662,8 @@ class MasterDataService:
         if resource == "suppliers":
             account = self.env["res.users"].sudo().with_context(active_test=False).search([("brew_supplier_id", "=", record.id)], limit=1)
             data["account"] = {"login": account.login, "active": account.active} if account else None
+        if resource == "material-categories":
+            data["brew_packaging_type"] = record.brew_packaging_type
         return data
 
     def _equipment(self, equipment_id):

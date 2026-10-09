@@ -10,6 +10,7 @@
         "security/ir.model.access.csv",
         "security/record_rules.xml",
         "data/material_categories.xml",
+        "data/packaging_categories.xml",
         "data/beer_categories.xml",
         "views/factory_views.xml",
         "views/warehouse_views.xml",

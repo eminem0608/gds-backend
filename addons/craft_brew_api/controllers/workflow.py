@@ -27,7 +27,7 @@ class WorkflowController(BrewApiController):
     def task_action(self, task_id, action):
         request_id = self._request_id()
         try:
-            if action not in {"claim", "start", "submit", "return", "reassign"}: raise ApiError("RESOURCE_NOT_FOUND", "任务动作不存在。", 404)
+            if action not in {"claim", "start", "submit", "return", "reassign", "checkpoint", "fermentation-record", "fermentation-condition"}: raise ApiError("RESOURCE_NOT_FOUND", "任务动作不存在。", 404)
             payload = self._json_body(); user, company, service = self._workflow_context(True)
             idem, replay = self._start_idempotency(user, company, payload)
             if replay: return replay

@@ -15,3 +15,5 @@ from . import trace
 from . import reporting
 from . import recipe
 from . import workflow
+from . import packaging
+from . import stock_browser
