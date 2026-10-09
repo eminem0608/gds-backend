@@ -1,4 +1,7 @@
+from odoo import Command
 from odoo.tests import TransactionCase, tagged
+
+from ..services.role_service import SYSTEM_ADMIN_DEFAULT_ROLE_CODES
 
 
 @tagged("post_install", "-at_install")
@@ -48,3 +51,22 @@ class TestCoreModels(TransactionCase):
         self.assertEqual(self.env["brew.outbox.event"]._cron_dispatch(), 1)
         self.assertEqual(event.state, "published")
         self.assertEqual(event.attempts, 1)
+
+    def test_system_admin_never_receives_an_empty_application_context(self):
+        self.user.write(
+            {
+                "groups_id": [
+                    Command.link(self.env.ref("base.group_system").id),
+                ],
+                "brew_direct_role_codes": [],
+            }
+        )
+
+        self.assertEqual(
+            self.user.brew_role_codes(),
+            list(SYSTEM_ADMIN_DEFAULT_ROLE_CODES),
+        )
+        context = self.user.brew_context_payload()
+        self.assertTrue(context["menus"])
+        self.assertIn("inventory", {item["code"] for item in context["menus"]})
+        self.assertIn("settings", {item["code"] for item in context["menus"]})

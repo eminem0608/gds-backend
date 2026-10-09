@@ -40,7 +40,22 @@ class PurchaseController(BrewApiController):
             if not mutation:
                 page, size = self._purchase_paging()
                 data, total = service.requisitions(
-                    page, size, request.httprequest.args.get("state")
+                    page,
+                    size,
+                    {
+                        key: request.httprequest.args.get(key)
+                        for key in (
+                            "keyword",
+                            "supplier_name",
+                            "requester_name",
+                            "factory_id",
+                            "request_type",
+                            "state",
+                            "date_from",
+                            "date_to",
+                        )
+                        if request.httprequest.args.get(key)
+                    },
                 )
                 return self._purchase_page_response(data, total, page, size, request_id)
             payload = self._json_body()
@@ -58,7 +73,36 @@ class PurchaseController(BrewApiController):
         request_id = self._request_id()
         try:
             _user, _company, service = self._purchase_context(False)
-            return self._response(service.requisition_source_plans(), request_id=request_id)
+            filters = {
+                key: request.httprequest.args.get(key)
+                for key in (
+                    "category_group", "category_code", "material_id", "material_name",
+                    "plan_no", "product_name", "date_from", "date_to"
+                )
+                if request.httprequest.args.get(key)
+            }
+            return self._response(service.requisition_source_plans(filters), request_id=request_id)
+        except Exception as exc:
+            return self._error_response(exc, request_id)
+
+    @http.route("/api/v1/purchase-requisitions/<int:record_id>", type="http", auth="public", methods=["GET", "PATCH"], csrf=False)
+    def purchase_requisition(self, record_id):
+        request_id = self._request_id()
+        try:
+            mutation = request.httprequest.method == "PATCH"
+            user, company, service = self._purchase_context(mutation)
+            if not mutation:
+                record = service._record("brew.purchase.requisition", record_id)
+                return self._response(
+                    service._serialize_requisition(record), request_id=request_id
+                )
+            payload = self._json_body()
+            idem, replay = self._start_idempotency(user, company, payload)
+            if replay:
+                return replay
+            record, data = service.update_requisition(record_id, payload)
+            self._audit("purchase_requisition", "update", request_id, user, company, {"id": record.id})
+            return self._complete_idempotency(idem, data)
         except Exception as exc:
             return self._error_response(exc, request_id)
 
@@ -103,8 +147,8 @@ class PurchaseController(BrewApiController):
             idem, replay = self._start_idempotency(user, company, payload)
             if replay:
                 return replay
-            order, data = service.create_order_from_requisitions(payload)
-            self._audit("purchase_order", "create_from_requisitions", request_id, user, company, {"id": order.id})
+            orders, data = service.create_order_from_requisitions(payload)
+            self._audit("purchase_order", "create_from_requisitions", request_id, user, company, {"ids": orders.ids})
             return self._complete_idempotency(idem, data, 201)
         except Exception as exc:
             return self._error_response(exc, request_id)
@@ -118,7 +162,12 @@ class PurchaseController(BrewApiController):
             if not mutation:
                 page, size = self._purchase_paging()
                 data, total = service.orders(
-                    page, size, request.httprequest.args.get("state")
+                    page,
+                    size,
+                    request.httprequest.args.get("state"),
+                    request.httprequest.args.get("supplier_name"),
+                    request.httprequest.args.get("order_no"),
+                    request.httprequest.args.get("receipt_state"),
                 )
                 return self._purchase_page_response(data, total, page, size, request_id)
             payload = self._json_body()
@@ -139,7 +188,7 @@ class PurchaseController(BrewApiController):
             user, company, service = self._purchase_context(mutation)
             if not mutation:
                 order = service._record("purchase.order", order_id, "brew_factory_id")
-                return self._response(service._serialize_order(order), request_id=request_id)
+                return self._response(service._serialize_order(order, include_edit_options=True), request_id=request_id)
             payload = self._json_body()
             idem, replay = self._start_idempotency(user, company, payload)
             if replay:

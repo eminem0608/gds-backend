@@ -1,7 +1,7 @@
 {
     "name": "Craft Brew Inventory",
     "summary": "Lot quality, FEFO reservation and controlled inventory documents.",
-    "version": "17.0.1.0.0",
+    "version": "17.0.1.1.0",
     "category": "Inventory",
     "author": "Craft Brew",
     "license": "LGPL-3",

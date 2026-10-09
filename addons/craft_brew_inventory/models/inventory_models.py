@@ -388,9 +388,22 @@ class BrewInventoryCount(models.Model):
         for quant in quants:
             key = (quant.location_id.id, quant.product_id.id, quant.lot_id.id or False)
             totals[key] = totals.get(key, 0) + quant.quantity
+        previous_by_key = {}
+        previous_lines = self.env["brew.inventory.count.line"].search(
+            [
+                ("company_id", "=", self.company_id.id),
+                ("count_id.state", "=", "done"),
+                ("location_id", "child_of", self.location_id.id),
+            ],
+            order="create_date desc, id desc",
+        )
+        for line in previous_lines:
+            key = (line.location_id.id, line.product_id.id, line.lot_id.id or False)
+            previous_by_key.setdefault(key, line)
         commands = [Command.clear()]
         for (location_id, product_id, lot_id), quantity in totals.items():
             product = self.env["product.product"].browse(product_id)
+            previous_line = previous_by_key.get((location_id, product_id, lot_id))
             commands.append(
                 Command.create(
                     {
@@ -400,6 +413,7 @@ class BrewInventoryCount(models.Model):
                         "theoretical_qty": quantity,
                         "counted_qty": quantity,
                         "uom_id": product.uom_id.id,
+                        "previous_count_line_id": previous_line.id if previous_line else False,
                     }
                 )
             )
@@ -409,6 +423,10 @@ class BrewInventoryCount(models.Model):
     def action_submit(self, user):
         self.ensure_one()
         if self.state != "counting": raise ValidationError("只有盘点中单据可以提交。")
+        if self.line_ids.filtered(
+            lambda line: abs(line.difference_qty) > 0.000001 and not line.difference_reason
+        ):
+            raise ValidationError("存在盘点差异时必须填写差异原因。")
         difference = sum(abs(line.difference_qty) for line in self.line_ids)
         theoretical = sum(abs(line.theoretical_qty) for line in self.line_ids)
         rate = difference / theoretical if theoretical else (1 if difference else 0)
@@ -466,13 +484,35 @@ class BrewInventoryCountLine(models.Model):
     theoretical_qty = fields.Float(readonly=True)
     counted_qty = fields.Float(required=True)
     difference_qty = fields.Float(compute="_compute_difference", store=True)
+    previous_count_line_id = fields.Many2one(
+        "brew.inventory.count.line", readonly=True, ondelete="set null"
+    )
+    difference_reason = fields.Selection(
+        [
+            ("damage", "破损"),
+            ("expired", "过期报废"),
+            ("measurement", "计量误差"),
+            ("missing_transaction", "单据未及时入账"),
+            ("unrecorded_issue_return", "领料或退料未登记"),
+            ("other", "其他"),
+        ],
+        string="差异原因",
+    )
+    difference_note = fields.Char("差异说明")
     uom_id = fields.Many2one("uom.uom", required=True)
 
     @api.depends("theoretical_qty", "counted_qty")
     def _compute_difference(self):
         for line in self: line.difference_qty = line.counted_qty - line.theoretical_qty
 
-    @api.constrains("counted_qty", "product_id", "lot_id", "uom_id")
+    @api.constrains(
+        "counted_qty",
+        "product_id",
+        "lot_id",
+        "uom_id",
+        "difference_reason",
+        "difference_note",
+    )
     def _check_count_line(self):
         for line in self:
             if line.counted_qty < 0:
@@ -483,6 +523,13 @@ class BrewInventoryCountLine(models.Model):
                 raise ValidationError("盘点批次与产品不一致。")
             if line.uom_id.category_id != line.product_id.uom_id.category_id:
                 raise ValidationError("盘点单位与产品单位类别不一致。")
+            has_difference = abs(line.counted_qty - line.theoretical_qty) > 0.000001
+            if has_difference and not line.difference_reason:
+                raise ValidationError("存在盘点差异时必须填写差异原因。")
+            if has_difference and line.difference_reason == "other" and not str(
+                line.difference_note or ""
+            ).strip():
+                raise ValidationError("差异原因为其他时必须填写差异说明。")
 
 
 class BrewInventoryScrap(models.Model):

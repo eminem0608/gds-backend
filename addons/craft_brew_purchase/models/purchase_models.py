@@ -5,7 +5,7 @@ from odoo.exceptions import ValidationError
 class BrewPurchaseRequisition(models.Model):
     _name = "brew.purchase.requisition"
     _description = "Craft Brew Purchase Requisition"
-    _order = "need_date, id"
+    _order = "id desc"
     _check_company_auto = True
 
     name = fields.Char(required=True, default="New", copy=False, index=True)
@@ -22,6 +22,13 @@ class BrewPurchaseRequisition(models.Model):
     )
     reason = fields.Text()
     emergency_reason = fields.Text()
+    preferred_supplier_id = fields.Many2one(
+        "res.partner",
+        string="建议供应商",
+        check_company=True,
+        domain=[("supplier_rank", ">", 0)],
+        index=True,
+    )
     requester_id = fields.Many2one(
         "res.users", required=True, default=lambda self: self.env.user, check_company=True
     )
@@ -235,6 +242,7 @@ class PurchaseOrder(models.Model):
     brew_approval_return_reason = fields.Text(readonly=True)
     brew_placed_at = fields.Datetime(readonly=True)
     brew_close_reason = fields.Text(readonly=True)
+    brew_expected_arrival_date = fields.Date("预计到货日期", index=True)
     brew_supplier_shipment_ids = fields.One2many(
         "brew.supplier.shipment", "purchase_order_id"
     )
@@ -245,7 +253,7 @@ class PurchaseOrder(models.Model):
             return True
         return super()._create_picking()
 
-    def action_brew_submit(self, user):
+    def action_brew_submit(self, user, submission_comment=None):
         self.ensure_one()
         if self.brew_approval_state == "pending" and self.brew_approval_instance_id and self.brew_approval_instance_id.state == "returned":
             returned_steps = self.brew_approval_instance_id.step_ids.filtered(lambda step: step.state == "returned")
@@ -284,6 +292,10 @@ class PurchaseOrder(models.Model):
             "returned",
         }:
             raise ValidationError("当前采购订单不能提交审批。")
+        if self.brew_approval_state == "returned" and not str(
+            submission_comment or ""
+        ).strip():
+            raise ValidationError("退回的采购订单再次提交时必须填写修改说明。")
         if not self.brew_factory_id or not self.order_line:
             raise ValidationError("采购订单必须填写厂区和明细。")
         approval = self.env["brew.approval.instance"].create_for_target(
@@ -292,11 +304,13 @@ class PurchaseOrder(models.Model):
             user,
             self.brew_factory_id,
             {"amount": self.amount_total, "quantity": sum(self.order_line.mapped("product_qty"))},
+            submission_comment=str(submission_comment or "").strip() or None,
         )
         self.write(
             {
                 "brew_approval_state": "pending",
                 "brew_approval_instance_id": approval.id,
+                "brew_approval_return_reason": False,
             }
         )
         return approval
@@ -352,6 +366,8 @@ class PurchaseOrderLine(models.Model):
         "requisition_line_id",
         string="采购需求明细",
     )
+    brew_package_spec = fields.Char("包装规格")
+    brew_package_count = fields.Float("采购件数", digits="Product Unit of Measure")
 
 
 class BrewSupplierShipment(models.Model):

@@ -114,3 +114,23 @@ class TestInventory(TransactionCase):
         self.assertEqual(reservation.quantity_base, 2)
         reservation.action_release()
         self.assertEqual(reservation.state, "released")
+
+    def test_inventory_count_requires_reason_and_links_previous_count(self):
+        first = self.env["brew.inventory.count"].create(
+            {"company_id": self.env.company.id, "location_id": self.source.id}
+        )
+        first.action_start()
+        first_line = first.line_ids.filtered(lambda line: line.lot_id == self.lot)
+        with self.assertRaises(ValidationError):
+            first_line.write({"counted_qty": 9})
+        first_line.write(
+            {"counted_qty": 9, "difference_reason": "measurement"}
+        )
+        first.write({"state": "done"})
+
+        second = self.env["brew.inventory.count"].create(
+            {"company_id": self.env.company.id, "location_id": self.source.id}
+        )
+        second.action_start()
+        second_line = second.line_ids.filtered(lambda line: line.lot_id == self.lot)
+        self.assertEqual(second_line.previous_count_line_id, first_line)

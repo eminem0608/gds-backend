@@ -28,13 +28,25 @@ class BrewApprovalInstance(models.Model):
     current_sequence = fields.Integer(default=10)
     step_ids = fields.One2many("brew.approval.step", "instance_id")
     completed_at = fields.Datetime()
+    submission_comment = fields.Text()
 
-    _sql_constraints = [
-        ("active_target_unique", "unique(company_id, target_model, target_id, state)", "同一对象不能存在重复状态的审批实例。"),
-    ]
+    def init(self):
+        self.env.cr.execute(
+            "ALTER TABLE brew_approval_instance "
+            "DROP CONSTRAINT IF EXISTS brew_approval_instance_active_target_unique"
+        )
+        self.env.cr.execute(
+            "CREATE UNIQUE INDEX IF NOT EXISTS "
+            "brew_approval_instance_pending_target_unique "
+            "ON brew_approval_instance (company_id, target_model, target_id) "
+            "WHERE state = 'pending'"
+        )
 
     @api.model
-    def create_for_target(self, approval_type, target, requester, factory=None, metrics=None):
+    def create_for_target(
+        self, approval_type, target, requester, factory=None, metrics=None,
+        submission_comment=None,
+    ):
         company = target.company_id
         domain = [
             ("company_id", "=", company.id),
@@ -68,6 +80,7 @@ class BrewApprovalInstance(models.Model):
                 "requester_id": requester.id,
                 "rule_id": matched.id if matched else False,
                 "rule_snapshot_json": json.dumps({"config": snapshot, "metrics": metrics}, ensure_ascii=False, sort_keys=True),
+                "submission_comment": submission_comment,
             }
         )
         for index, role_code in enumerate(roles, start=1):

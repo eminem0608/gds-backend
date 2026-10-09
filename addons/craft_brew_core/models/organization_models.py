@@ -5,6 +5,7 @@ from psycopg2 import IntegrityError
 from ..services.role_service import (
     MENU_DEFINITIONS,
     ROLE_DEFINITIONS,
+    SYSTEM_ADMIN_DEFAULT_ROLE_CODES,
     default_page_for_roles,
     menu_codes_for_role,
     permissions_for_roles,
@@ -236,8 +237,12 @@ class ResUsers(models.Model):
         self.ensure_one()
         values = self.brew_direct_role_codes
         if not isinstance(values, list):
-            return self._legacy_group_role_codes()
-        return [code for code in values if code in ROLE_DEFINITIONS]
+            codes = self._legacy_group_role_codes()
+        else:
+            codes = [code for code in values if code in ROLE_DEFINITIONS]
+        if not codes and self.has_group("base.group_system"):
+            return list(SYSTEM_ADMIN_DEFAULT_ROLE_CODES)
+        return codes
 
     def _organization_ancestors(self):
         self.ensure_one()

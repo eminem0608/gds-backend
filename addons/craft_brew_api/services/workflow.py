@@ -334,7 +334,7 @@ class WorkflowService:
         if instance.target_model == "purchase.order":
             order = self.env["purchase.order"].sudo().browse(instance.target_id).exists()
             if order:
-                return {"id": str(step.id), "instance_id": str(instance.id), "name": "采购订单审批 · " + order.display_name, "approval_type": instance.approval_type, "role_code": step.role_code, "sequence": step.sequence, "state": step.state, "instance_state": instance.state, "comment": step.comment or order.brew_approval_return_reason, "target_model": instance.target_model, "target_id": str(instance.target_id), "version": step.write_date.isoformat() if step.write_date else None}
+                return {"id": str(step.id), "instance_id": str(instance.id), "name": "采购订单审批 · " + order.display_name, "approval_type": instance.approval_type, "role_code": step.role_code, "sequence": step.sequence, "state": step.state, "instance_state": instance.state, "comment": step.comment or instance.submission_comment, "target_model": instance.target_model, "target_id": str(instance.target_id), "version": step.write_date.isoformat() if step.write_date else None}
         return {"id": str(step.id), "instance_id": str(instance.id), "name": instance.name, "approval_type": instance.approval_type, "role_code": step.role_code, "sequence": step.sequence, "state": step.state, "instance_state": instance.state, "comment": step.comment, "version": step.write_date.isoformat() if step.write_date else None}
 
     def approval_action(self, step_id, action, payload):
@@ -345,15 +345,6 @@ class WorkflowService:
         current = step.write_date.isoformat() if step.write_date else None
         if not payload.get("version") or payload["version"] != current: raise ApiError("VERSION_CONFLICT", "审批版本不一致。", 409, {"current_version": current})
         if action == "approve":
-            stale = self.env["brew.approval.instance"].sudo().search([
-                ("company_id", "=", self.company.id),
-                ("target_model", "=", step.instance_id.target_model),
-                ("target_id", "=", step.instance_id.target_id),
-                ("state", "=", "approved"),
-                ("id", "!=", step.instance_id.id),
-            ])
-            if stale:
-                stale.write({"state": "cancelled", "completed_at": fields.Datetime.now()})
             step.action_approve(self.user, payload.get("comment"))
             if step.instance_id.state == "approved":
                 instance = step.instance_id

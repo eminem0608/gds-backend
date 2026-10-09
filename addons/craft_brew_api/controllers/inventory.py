@@ -60,6 +60,10 @@ class InventoryController(BrewApiController):
                     "product_id",
                     "quality_status",
                     "frozen",
+                    "keyword",
+                    "supplier_id",
+                    "category",
+                    "expiry_status",
                 ]
                 if request.httprequest.args.get(key) is not None
             }

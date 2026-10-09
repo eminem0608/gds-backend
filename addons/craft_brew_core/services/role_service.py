@@ -216,6 +216,17 @@ ROLE_PRIORITY = (
     "supplier",
 )
 
+SYSTEM_ADMIN_DEFAULT_ROLE_CODES = (
+    "general_manager",
+    "production_director",
+    "operator",
+    "warehouse_keeper",
+    "purchaser",
+    "salesperson",
+    "finance",
+    "tenant_admin",
+)
+
 
 def permissions_for_roles(role_codes):
     permissions = set()

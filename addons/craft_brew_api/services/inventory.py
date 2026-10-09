@@ -1,5 +1,5 @@
 import json
-from datetime import date
+from datetime import date, timedelta
 
 from odoo import Command, fields
 from odoo.exceptions import ValidationError
@@ -164,24 +164,33 @@ class InventoryService:
         categories = {}
 
         def bucket(product):
-            code = self._category(product)
+            template = product.product_tmpl_id
+            code = template.brew_material_category or self._category(product)
+            labels = dict(template._brew_material_category_selection())
             return categories.setdefault(
                 code,
                 {
                     "category": code,
+                    "category_name": labels.get(code, code),
                     "on_hand": 0.0,
                     "reserved": 0.0,
                     "available": 0.0,
                     "pending_quality": 0.0,
                     "incoming": 0.0,
                     "frozen": 0.0,
-                    "uom_note": "按产品基础单位汇总，仅同类下钻可直接比较",
+                    "product_ids": set(),
+                    "lot_ids": set(),
+                    "expired_lot_ids": set(),
+                    "expiring_lot_ids": set(),
+                    "uom_names": set(),
                 },
             )
 
         today = fields.Date.today()
         for quant in quants:
             values = bucket(quant.product_id)
+            values["product_ids"].add(quant.product_id.id)
+            values["uom_names"].add(quant.product_id.uom_id.name)
             quantity = quant.quantity
             custom_reserved = reservation_totals.get(
                 (quant.location_id.id, quant.product_id.id, quant.lot_id.id), 0
@@ -190,6 +199,14 @@ class InventoryService:
             values["on_hand"] += quantity
             values["reserved"] += min(max(quantity, 0), reserved)
             lot = quant.lot_id
+            if lot:
+                values["lot_ids"].add(lot.id)
+                if lot.brew_expiration_date:
+                    days = (lot.brew_expiration_date - today).days
+                    if days < 0:
+                        values["expired_lot_ids"].add(lot.id)
+                    elif days <= 30:
+                        values["expiring_lot_ids"].add(lot.id)
             if lot and lot.brew_quality_status == "pending":
                 values["pending_quality"] += max(quantity, 0)
             if lot and lot.brew_frozen:
@@ -217,7 +234,10 @@ class InventoryService:
             ]
         )
         for move in incoming_moves:
-            bucket(move.product_id)["incoming"] += move.product_uom._compute_quantity(
+            values = bucket(move.product_id)
+            values["product_ids"].add(move.product_id.id)
+            values["uom_names"].add(move.product_id.uom_id.name)
+            values["incoming"] += move.product_uom._compute_quantity(
                 move.product_uom_qty, move.product_id.uom_id
             )
         totals = {
@@ -231,7 +251,27 @@ class InventoryService:
                 "frozen",
             ]
         }
-        return {"totals": totals, "categories": list(categories.values())}
+        result_categories = []
+        for values in categories.values():
+            result_categories.append(
+                {
+                    **{
+                        key: value
+                        for key, value in values.items()
+                        if not key.endswith("_ids") and key != "uom_names"
+                    },
+                    "product_count": len(values["product_ids"]),
+                    "lot_count": len(values["lot_ids"]),
+                    "expired_lots": len(values["expired_lot_ids"]),
+                    "expiring_lots": len(values["expiring_lot_ids"]),
+                    "uom": (
+                        next(iter(values["uom_names"]))
+                        if len(values["uom_names"]) == 1
+                        else "多单位"
+                    ),
+                }
+            )
+        return {"totals": totals, "categories": result_categories}
 
     def _serialize_lot(self, lot, quants=None):
         if quants is None:
@@ -248,6 +288,62 @@ class InventoryService:
         )
         on_hand = sum(quants.mapped("quantity"))
         reserved = sum(quants.mapped("reserved_quantity")) + sum(reservations.values())
+        today = fields.Date.today()
+        expiration_date = lot.brew_expiration_date
+        if not expiration_date:
+            expiry_status = "no_expiration"
+            days_to_expiry = None
+        else:
+            days_to_expiry = (expiration_date - today).days
+            expiry_status = (
+                "expired"
+                if days_to_expiry < 0
+                else "expiring"
+                if days_to_expiry <= 30
+                else "normal"
+            )
+        usable_quants = quants.filtered(
+            lambda quant: quant.quantity > 0
+            and quant.location_id.brew_location_type != "qc"
+        )
+        available = sum(
+            max(
+                quant.quantity
+                - max(quant.reserved_quantity, 0)
+                - reservations.get(
+                    (quant.location_id.id, quant.product_id.id, lot.id), 0
+                ),
+                0,
+            )
+            for quant in usable_quants
+        )
+        if lot.brew_quality_status == "pending":
+            available_reason = "pending_quality"
+            available = 0
+        elif lot.brew_quality_status == "rejected":
+            available_reason = "rejected"
+            available = 0
+        elif lot.brew_frozen:
+            available_reason = "frozen"
+            available = 0
+        elif expiry_status == "expired":
+            available_reason = "expired"
+            available = 0
+        elif on_hand > 0 and not usable_quants:
+            available_reason = "pending_location"
+            available = 0
+        elif on_hand > 0 and available <= 0:
+            available_reason = "fully_reserved"
+        elif on_hand <= 0:
+            available_reason = "no_stock"
+        else:
+            available_reason = None
+        template = lot.product_id.product_tmpl_id
+        supplier = template.brew_supplier_id
+        category_code = template.brew_material_category
+        category_label = dict(template._brew_material_category_selection()).get(
+            category_code, category_code or ""
+        )
         return {
             "id": str(lot.id),
             "name": lot.name,
@@ -256,23 +352,24 @@ class InventoryService:
                 "id": str(lot.product_id.id),
                 "name": lot.product_id.display_name,
                 "category": self._category(lot.product_id),
+                "material_category": category_code,
+                "material_category_name": category_label,
             },
-            "expiration_date": (
-                lot.brew_expiration_date.isoformat() if lot.brew_expiration_date else None
+            "supplier": (
+                {"id": str(supplier.id), "name": supplier.display_name}
+                if supplier
+                else None
             ),
+            "expiration_date": expiration_date.isoformat() if expiration_date else None,
+            "expiry_status": expiry_status,
+            "days_to_expiry": days_to_expiry,
             "quality_status": lot.brew_quality_status,
             "frozen": lot.brew_frozen,
             "freeze_reason": lot.brew_freeze_reason,
             "on_hand": on_hand,
             "reserved": reserved,
-            "available": max(on_hand - reserved, 0)
-            if lot.brew_quality_status == "qualified"
-            and not lot.brew_frozen
-            and (
-                not lot.brew_expiration_date
-                or lot.brew_expiration_date >= fields.Date.today()
-            )
-            else 0,
+            "available": available,
+            "available_reason": available_reason,
             "uom": lot.product_id.uom_id.name,
             "locations": [
                 {
@@ -306,6 +403,52 @@ class InventoryService:
             self.env["stock.quant"].sudo().search(quant_domain).mapped("lot_id").ids
         ))
         domain = [("id", "in", lot_ids)]
+        keyword = str(filters.get("keyword") or "").strip()
+        if keyword:
+            products = self.env["product.product"].sudo().search(
+                [
+                    "|",
+                    ("name", "ilike", keyword),
+                    ("default_code", "ilike", keyword),
+                ]
+            )
+            domain += [
+                "|",
+                "|",
+                ("name", "ilike", keyword),
+                ("brew_supplier_lot", "ilike", keyword),
+                ("product_id", "in", products.ids),
+            ]
+        if filters.get("supplier_id"):
+            domain.append(
+                (
+                    "product_id.product_tmpl_id.brew_supplier_id",
+                    "=",
+                    int(filters["supplier_id"]),
+                )
+            )
+        if filters.get("category"):
+            domain.append(
+                (
+                    "product_id.product_tmpl_id.brew_material_category",
+                    "=",
+                    filters["category"],
+                )
+            )
+        expiry_status = filters.get("expiry_status")
+        today = fields.Date.today()
+        expiry_limit = today + timedelta(days=30)
+        if expiry_status == "expired":
+            domain.append(("brew_expiration_date", "<", today))
+        elif expiry_status == "expiring":
+            domain += [
+                ("brew_expiration_date", ">=", today),
+                ("brew_expiration_date", "<=", expiry_limit),
+            ]
+        elif expiry_status == "normal":
+            domain.append(("brew_expiration_date", ">", expiry_limit))
+        elif expiry_status == "no_expiration":
+            domain.append(("brew_expiration_date", "=", False))
         if filters.get("quality_status"):
             domain.append(("brew_quality_status", "=", filters["quality_status"]))
         if filters.get("frozen") in {"true", "false"}:
@@ -792,6 +935,8 @@ class InventoryService:
             "id": str(record.id),
             "name": record.name,
             "state": record.state,
+            "created_at": record.create_date.isoformat() if record.create_date else None,
+            "updated_at": record.write_date.isoformat() if record.write_date else None,
             "factory": (
                 {"id": str(record.factory_id.id), "name": record.factory_id.name}
                 if record.factory_id
@@ -825,6 +970,21 @@ class InventoryService:
                     "theoretical_qty": line.theoretical_qty,
                     "counted_qty": line.counted_qty,
                     "difference_qty": line.difference_qty,
+                    "difference_reason": line.difference_reason,
+                    "difference_note": line.difference_note,
+                    "previous_count": (
+                        {
+                            "name": line.previous_count_line_id.count_id.name,
+                            "counted_qty": line.previous_count_line_id.counted_qty,
+                            "counted_at": (
+                                line.previous_count_line_id.count_id.write_date.isoformat()
+                                if line.previous_count_line_id.count_id.write_date
+                                else None
+                            ),
+                        }
+                        if line.previous_count_line_id
+                        else None
+                    ),
                     "uom": {"id": str(line.uom_id.id), "name": line.uom_id.name},
                 }
                 for line in record.line_ids
@@ -895,7 +1055,28 @@ class InventoryService:
             counted = float(values.get("counted_qty"))
             if counted < 0:
                 raise ApiError("VALIDATION_RANGE", "盘点实数不能小于零。", 422)
-            line.write({"counted_qty": counted})
+            has_difference = abs(counted - line.theoretical_qty) > 0.000001
+            reason = values.get("difference_reason") or False
+            note = str(values.get("difference_note") or "").strip() or False
+            if has_difference and not reason:
+                raise ApiError(
+                    "VALIDATION_REQUIRED",
+                    f"{line.product_id.display_name} 存在盘点差异，请选择差异原因。",
+                    422,
+                )
+            if has_difference and reason == "other" and not note:
+                raise ApiError(
+                    "VALIDATION_REQUIRED",
+                    f"{line.product_id.display_name} 的差异原因为其他，请填写差异说明。",
+                    422,
+                )
+            line.write(
+                {
+                    "counted_qty": counted,
+                    "difference_reason": reason if has_difference else False,
+                    "difference_note": note if has_difference else False,
+                }
+            )
             seen.add(line_id)
         if seen != set(by_id):
             raise ApiError("VALIDATION_REQUIRED", "必须提交全部盘点明细。", 422)
