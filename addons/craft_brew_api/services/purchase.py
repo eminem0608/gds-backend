@@ -285,7 +285,9 @@ class PurchaseService:
         domain = [
             ("company_id", "=", self.company.id),
             ("factory_id", "in", self._factory_ids()),
-            ("state", "in", ["approved", "dispatched", "in_progress"]),
+            # Checked is the normal entry point for requesting stock; stocking
+            # keeps plans with generated requisitions visible without duplication.
+            ("state", "in", ["checked", "stocking", "approved", "dispatched", "in_progress"]),
         ]
         if filters.get("plan_no"):
             domain.append(("name", "ilike", filters["plan_no"]))

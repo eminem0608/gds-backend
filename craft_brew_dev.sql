@@ -2,7 +2,7 @@
 -- PostgreSQL database dump
 --
 
-\restrict 4jEVXJCdwy7pL5kEaAI1Oj6rQcUC8P14akccaIgi3DYJbj0iblY4Ih83J78BuQd
+\restrict DQcqdJSiuw9k5I43XEAdWrinqOOP44Nh9eEDwQx8oYlr2LVhGgY6e4yoD1CRQcC
 
 -- Dumped from database version 15.19 (Debian 15.19-1.pgdg13+2)
 -- Dumped by pg_dump version 15.19 (Debian 15.19-1.pgdg13+2)
@@ -58049,7 +58049,20 @@ COPY public.brew_api_session (id, user_id, company_id, session_version, create_u
 143	2	1	1	2	2	48ac9a1345bdf9e09b5b7d026b293ed5db212231d9ec4c72fede2fc1f3414529	32f6ba6c3d5a24568d81e1cdc79aaf7a79bbcc98cdaf4c52313ec96449ae3f49	Web 管理端	web-browser	Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/153.0.0.0 Safari/537.36	172.18.0.1	\N	2026-10-09 12:57:00	2026-11-08 12:27:00	2026-10-09 12:27:00	\N	2026-10-09 12:27:00.357578	2026-10-09 12:27:00.357578	1
 144	2	1	1	2	2	84b654126536fb507f491a079965e0894072c5f239e7b939149cace6856f4482	ce8ff34be2b78dca03cb9bc5880f013b1ff2bfb602dcb1f61a3ded5092d70ddf	Web 管理端	web-browser	Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/153.0.0.0 Safari/537.36	172.18.0.1	\N	2026-10-09 12:57:59	2026-11-08 12:27:59	2026-10-09 12:27:59	\N	2026-10-09 12:27:59.197214	2026-10-09 12:27:59.197214	1
 145	2	1	1	2	2	7e017fb9dd4f2680332e2cb3af954ad3278432189bbd0c01b8f30057fd37432d	0b19069a0e2c4889281d7998ef6ca9062a096d3a510d60f41186f31bf2451055	Web 管理端	web-browser	Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/153.0.0.0 Safari/537.36	172.18.0.1	\N	2026-10-09 13:00:01	2026-11-08 12:30:01	2026-10-09 12:30:01	\N	2026-10-09 12:30:01.488676	2026-10-09 12:30:01.488676	1
+150	2	1	1	2	4	fa412f0bd551c0368423f871f9e7b59600b085514052f96c8fbdd8e66c10ed05	b1a11525f6839c4dca1517ece12f652dd51f790a9fb54311ee3112c1cbbf731a	Unknown device	\N	Mozilla/5.0 (Windows NT; Windows NT 10.0; zh-CN) WindowsPowerShell/5.1.22621.5909	172.18.0.1	\N	2026-10-10 01:42:51	2026-11-09 01:12:51	2026-10-10 01:12:51	\N	2026-10-10 01:12:51.880786	2026-10-10 01:12:51.986006	1
 146	2	1	1	2	4	3651f230481a5ba55d887eb5e3177a4e76f13d210d9c9c1a065083a41fbff95d	b054e40880a1dea66ab82ebf3af90e0d57ab8f07fd4260a1dd67bf0389faa8ba	Unknown device	\N	Mozilla/5.0 (Windows NT; Windows NT 10.0; zh-CN) WindowsPowerShell/5.1.22621.5909	172.18.0.1	\N	2026-10-09 13:00:01	2026-11-08 12:30:01	2026-10-09 12:30:01	\N	2026-10-09 12:30:01.489172	2026-10-09 12:30:01.612471	1
+147	2	1	1	2	2	4129d626043f370652284cec9d6687123a76c83ee4a25b6848b25b3dec5354f6	37911faf203b5314c822b8537d5783dce81ab98de7a527f0ef08faa538c0bb2c	Web 管理端	web-browser	Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/153.0.0.0 Safari/537.36	172.18.0.1	\N	2026-10-10 01:19:53	2026-11-09 00:49:53	2026-10-10 00:49:53	\N	2026-10-10 00:49:53.80297	2026-10-10 00:49:53.80297	1
+148	2	1	1	2	4	11e01938f05dbfb5f9b3c95eaf06abe916e84e2ef5934da7e5fa5eb1bf7b6018	dce3db2231e9abc00510e54a4af4d0db7b988281f6f3b5c6eaef640186964193	Unknown device	\N	Mozilla/5.0 (Windows NT; Windows NT 10.0; zh-CN) WindowsPowerShell/5.1.22621.5909	172.18.0.1	\N	2026-10-10 01:29:52	2026-11-09 00:59:52	2026-10-10 00:59:52	\N	2026-10-10 00:59:52.678877	2026-10-10 00:59:52.810962	1
+151	2	1	1	2	2	5d085bf7dba4d85c5b03c2ed014a2d6b041d1c9b8173def6c00c5ab9ec495b38	8093ae55445327293960af4bf576f472de8d831759242dbb713062c9cd6233a7	Web 管理端	web-browser	Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/153.0.0.0 Safari/537.36	172.18.0.1	\N	2026-10-10 01:42:54	2026-11-09 01:12:54	2026-10-10 01:12:54	\N	2026-10-10 01:12:54.736764	2026-10-10 01:12:54.736764	1
+149	2	1	1	2	4	708d971bdb5753afa224d0cfa73656985213bc6363451fbfe81cf0319fbe96f7	b88062e8b9ffb8d5594412994d65041d7d8338ef81c84c7710fb7d72503285bd	Unknown device	\N	Mozilla/5.0 (Windows NT; Windows NT 10.0; zh-CN) WindowsPowerShell/5.1.22621.5909	172.18.0.1	\N	2026-10-10 01:35:48	2026-11-09 01:05:48	2026-10-10 01:05:48	\N	2026-10-10 01:05:48.184747	2026-10-10 01:05:48.349916	1
+156	2	1	1	2	2	3bfa8fd9c44fc00c1ae04a8d6ba6ce783c9ba13704d01ef57e53807d0677e53c	ec5b6b045d23709de24b0aa110fceb2f5442e16efaa3263c32009d1c7dd59bfa	Web 管理端	web-browser	Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/153.0.0.0 Safari/537.36	172.18.0.1	\N	2026-10-10 02:10:35	2026-11-09 01:40:35	2026-10-10 01:40:35	\N	2026-10-10 01:40:35.758268	2026-10-10 01:40:35.758268	1
+152	2	1	1	2	2	adb2e74cbd6ebec4827e86724844c8934ae9958c9460a38716102b4a684e52c3	8bd2978e02f9a0069e537809ea9e2d117c5fe88d61204bcb49f3fd6789aaa5ef	Web 管理端	web-browser	Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/153.0.0.0 Safari/537.36	172.18.0.1	\N	2026-10-10 01:58:48	2026-11-09 01:28:48	2026-10-10 01:28:48	\N	2026-10-10 01:28:48.903096	2026-10-10 01:28:48.903096	1
+153	2	1	1	2	2	adbb0c839d1664a167ac44b2f962e41fa281e855b412354f5b72ae497d21649a	5451593d8fa9648e7a316aeca75b4a9083e8d3025ee8be872c2fabbcc8359b15	Web 管理端	web-browser	Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/153.0.0.0 Safari/537.36	172.18.0.1	\N	2026-10-10 02:00:36	2026-11-09 01:30:36	2026-10-10 01:30:36	\N	2026-10-10 01:30:36.24239	2026-10-10 01:30:36.24239	1
+154	2	1	1	2	2	e610d799b2f0548ef9323614dbc92b872e201ee6e442075ca3effaa8c403558a	fa7ae62f6207c8b5b6605879bd5d0abb981f33c30a42862871bc699ec6deeb9a	Web 管理端	web-browser	Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/153.0.0.0 Safari/537.36	172.18.0.1	\N	2026-10-10 02:07:32	2026-11-09 01:37:32	2026-10-10 01:37:32	\N	2026-10-10 01:37:32.604692	2026-10-10 01:37:32.604692	1
+155	2	1	1	2	2	8093796be32e34492b373304aabeaaceb8c5eb23f6c31460284a130502440bf3	ead45dbba8eef26b69d655da864c717b54b179170503004f0fde1597e9a674d9	Web 管理端	web-browser	Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/153.0.0.0 Safari/537.36	172.18.0.1	\N	2026-10-10 02:09:32	2026-11-09 01:39:32	2026-10-10 01:39:32	\N	2026-10-10 01:39:32.233712	2026-10-10 01:39:32.233712	1
+157	2	1	1	2	2	8daaf23c4ad77fd7a21a84c25a59f96219317019e049ee920d18e9a7b4f10709	15cff8fb9988f065413e59de00bb5d11908e29733bcf23cb6a2addb795a1704a	Web 管理端	web-browser	Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/153.0.0.0 Safari/537.36	172.18.0.1	\N	2026-10-10 02:13:31	2026-11-09 01:43:31	2026-10-10 01:43:31	\N	2026-10-10 01:43:31.592775	2026-10-10 01:43:31.592775	1
+158	2	1	1	2	2	91da3d0b36d6a843ebae8557a1067363317a9eaf3bf5d98998295e90407ca165	fde99c488e2bc2a1e9f635322b5de2b0ddc9a236ce78d5969d9a9f1d978c4444	Web 管理端	web-browser	Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/153.0.0.0 Safari/537.36	172.18.0.1	\N	2026-10-10 02:14:44	2026-11-09 01:44:44	2026-10-10 01:44:44	\N	2026-10-10 01:44:44.331821	2026-10-10 01:44:44.331821	1
+159	2	1	1	2	2	12e29fa0d5b0f42b3324a370b5c4207213c1a0553c843148b2e935ec3596c2bd	9f6fcd0ef1cdefd403f1cf9bdc0fab99c44955881f44bfdfa244280b2af3aac6	Web 管理端	web-browser	Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/153.0.0.0 Safari/537.36	172.18.0.1	\N	2026-10-10 02:17:04	2026-11-09 01:47:04	2026-10-10 01:47:04	\N	2026-10-10 01:47:04.76974	2026-10-10 01:47:04.76974	1
 \.
 
 
@@ -58342,6 +58355,19 @@ COPY public.brew_audit_log (id, company_id, user_id, create_uid, write_uid, even
 287	1	2	2	2	authentication	\N	\N	login	req_b2399359ba1f4077824e60ca7835168c	172.18.0.1	Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/153.0.0.0 Safari/537.36	{"session_id": 144, "device_name": "Web 管理端"}	2026-10-09 12:27:59.197214	2026-10-09 12:27:59.197214
 288	1	2	2	2	authentication	\N	\N	login	req_84ebc911e5054518b30717f487cfe8c1	172.18.0.1	Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/153.0.0.0 Safari/537.36	{"session_id": 145, "device_name": "Web 管理端"}	2026-10-09 12:30:01.488676	2026-10-09 12:30:01.488676
 289	1	2	2	2	authentication	\N	\N	login	req_9976039755ff433aa25aee92ebe1a6e7	172.18.0.1	Mozilla/5.0 (Windows NT; Windows NT 10.0; zh-CN) WindowsPowerShell/5.1.22621.5909	{"session_id": 146, "device_name": "Unknown device"}	2026-10-09 12:30:01.489172	2026-10-09 12:30:01.489172
+290	1	2	2	2	authentication	\N	\N	login	req_1820cfc2da764c7faf6879f9701687a9	172.18.0.1	Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/153.0.0.0 Safari/537.36	{"session_id": 147, "device_name": "Web 管理端"}	2026-10-10 00:49:53.80297	2026-10-10 00:49:53.80297
+291	1	2	2	2	authentication	\N	\N	login	req_36ab67dc1edc444db0403c557a830fb8	172.18.0.1	Mozilla/5.0 (Windows NT; Windows NT 10.0; zh-CN) WindowsPowerShell/5.1.22621.5909	{"session_id": 148, "device_name": "Unknown device"}	2026-10-10 00:59:52.678877	2026-10-10 00:59:52.678877
+292	1	2	2	2	authentication	\N	\N	login	req_ef95a59aef0b470c8d74ec763b306d59	172.18.0.1	Mozilla/5.0 (Windows NT; Windows NT 10.0; zh-CN) WindowsPowerShell/5.1.22621.5909	{"session_id": 149, "device_name": "Unknown device"}	2026-10-10 01:05:48.184747	2026-10-10 01:05:48.184747
+293	1	2	2	2	authentication	\N	\N	login	req_af0680d1a45b474e96ba3b45fbab67d7	172.18.0.1	Mozilla/5.0 (Windows NT; Windows NT 10.0; zh-CN) WindowsPowerShell/5.1.22621.5909	{"session_id": 150, "device_name": "Unknown device"}	2026-10-10 01:12:51.880786	2026-10-10 01:12:51.880786
+294	1	2	2	2	authentication	\N	\N	login	req_992ccd5e1f1141119fc8defa8056a2b7	172.18.0.1	Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/153.0.0.0 Safari/537.36	{"session_id": 151, "device_name": "Web 管理端"}	2026-10-10 01:12:54.736764	2026-10-10 01:12:54.736764
+295	1	2	2	2	authentication	\N	\N	login	req_2fd0153770ee498bbf80cf7a843a5fd6	172.18.0.1	Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/153.0.0.0 Safari/537.36	{"session_id": 152, "device_name": "Web 管理端"}	2026-10-10 01:28:48.903096	2026-10-10 01:28:48.903096
+296	1	2	2	2	authentication	\N	\N	login	req_32c43da5acfc40b4ae63001c02b59447	172.18.0.1	Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/153.0.0.0 Safari/537.36	{"session_id": 153, "device_name": "Web 管理端"}	2026-10-10 01:30:36.24239	2026-10-10 01:30:36.24239
+297	1	2	2	2	authentication	\N	\N	login	req_67cc35e5ccd2452088183ffdb9afa939	172.18.0.1	Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/153.0.0.0 Safari/537.36	{"session_id": 154, "device_name": "Web 管理端"}	2026-10-10 01:37:32.604692	2026-10-10 01:37:32.604692
+298	1	2	2	2	authentication	\N	\N	login	req_0e3f6909a4ba4481908321d5b3fd19a6	172.18.0.1	Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/153.0.0.0 Safari/537.36	{"session_id": 155, "device_name": "Web 管理端"}	2026-10-10 01:39:32.233712	2026-10-10 01:39:32.233712
+299	1	2	2	2	authentication	\N	\N	login	req_c0d604205aef4c2d9fabfbab59f227a5	172.18.0.1	Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/153.0.0.0 Safari/537.36	{"session_id": 156, "device_name": "Web 管理端"}	2026-10-10 01:40:35.758268	2026-10-10 01:40:35.758268
+300	1	2	2	2	authentication	\N	\N	login	req_a8fac6d783fe4a5db9978acbb84909b7	172.18.0.1	Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/153.0.0.0 Safari/537.36	{"session_id": 157, "device_name": "Web 管理端"}	2026-10-10 01:43:31.592775	2026-10-10 01:43:31.592775
+301	1	2	2	2	authentication	\N	\N	login	req_3228a52e7f38494a9c001a1067938eb7	172.18.0.1	Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/153.0.0.0 Safari/537.36	{"session_id": 158, "device_name": "Web 管理端"}	2026-10-10 01:44:44.331821	2026-10-10 01:44:44.331821
+302	1	2	2	2	authentication	\N	\N	login	req_ea356a5df3e548599f71f3ca1feb04bd	172.18.0.1	Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/153.0.0.0 Safari/537.36	{"session_id": 159, "device_name": "Web 管理端"}	2026-10-10 01:47:04.76974	2026-10-10 01:47:04.76974
 \.
 
 
@@ -58414,7 +58440,7 @@ COPY public.brew_export_job (id, company_id, factory_id, requested_by_id, attach
 --
 
 COPY public.brew_factory (id, company_id, manager_id, stock_warehouse_id, create_uid, write_uid, name, code, address, active, create_date, write_date) FROM stdin;
-1	1	\N	2	2	2	试运行厂区	PILOT	本地开发与首期试运行	t	2026-09-17 07:20:49.481342	2026-10-09 12:25:20.102416
+1	1	\N	2	2	2	试运行厂区	PILOT	本地开发与首期试运行	t	2026-09-17 07:20:49.481342	2026-10-09 12:41:51.662603
 \.
 
 
@@ -60490,21 +60516,21 @@ COPY public.ir_cron (id, ir_actions_server_id, user_id, interval_number, numberc
 20	391	1	1	-1	5	1	1	Purchase reminder	days	t	t	2026-10-10 06:40:37	2026-10-09 07:16:58	2026-09-17 06:40:36.538219	2026-09-17 06:40:36.538219
 21	431	1	15	0	5	1	1	释放过期库存预占	minutes	f	\N	2026-09-17 07:00:26	2026-09-17 06:47:35	2026-09-17 06:45:26.120052	2026-09-17 06:45:26.120052
 22	435	1	1	0	5	1	1	检测发酵异常	hours	f	\N	2026-09-17 07:45:29	2026-09-17 06:47:35	2026-09-17 06:45:28.413126	2026-09-17 06:45:28.413126
-4	127	1	1	-1	5	1	1	Mail: Email Queue Manager	hours	t	f	2026-10-09 12:40:12	2026-10-09 11:40:35	2026-09-17 06:40:10.688896	2026-09-17 06:40:10.688896
 7	130	1	5	-1	5	1	1	Mail: Fetchmail Service	minutes	f	f	2026-09-17 06:40:12	\N	2026-09-17 06:40:10.688896	2026-09-17 06:40:10.688896
 11	149	1	1	-1	5	1	1	Users: Notify About Unregistered Users	days	t	\N	2026-10-10 06:40:14	2026-10-09 07:16:58	2026-09-17 06:40:14.592156	2026-09-17 06:40:14.592156
 10	133	1	1	-1	5	1	1	Discuss: channel member unmute	days	t	f	2026-10-10 06:40:12	2026-10-09 07:16:58	2026-09-17 06:40:10.688896	2026-09-17 06:40:10.688896
 6	129	1	1	-1	5	1	1	Notification: Delete Notifications older than 6 Month	days	t	f	2026-10-10 06:40:12	2026-10-09 07:16:58	2026-09-17 06:40:10.688896	2026-09-17 06:40:10.688896
-12	199	1	60	-1	5	1	1	Partner Autocomplete: Sync with remote DB	minutes	t	f	2026-10-09 12:40:18	2026-10-09 11:40:35	2026-09-17 06:40:18.537345	2026-09-17 06:40:18.537345
-8	131	1	1	-1	5	1	1	Notification: Send scheduled message notifications	hours	t	f	2026-10-09 12:40:12	2026-10-09 11:40:35	2026-09-17 06:40:10.688896	2026-09-17 06:40:10.688896
 5	128	1	1	-1	1000	1	1	Publisher: Update Notification	weeks	t	f	2026-10-15 06:40:12	2026-10-08 06:40:15	2026-09-17 06:40:10.688896	2026-09-17 06:40:10.688896
-13	203	1	1	-1	5	1	1	SMS: SMS Queue Manager	hours	t	f	2026-10-09 12:40:20	2026-10-09 11:40:35	2026-09-17 06:40:19.155712	2026-09-17 06:40:19.155712
-14	213	1	1	-1	5	1	1	Snailmail: process letters queue	hours	t	f	2026-10-09 12:40:20	2026-10-09 11:40:35	2026-09-17 06:40:20.357336	2026-09-17 06:40:20.357336
 16	220	1	10	-1	5	1	1	payment: post-process transactions	minutes	f	\N	2026-09-17 06:40:23	\N	2026-09-17 06:40:21.324151	2026-09-17 06:40:21.324151
-23	440	1	1	-1	5	1	1	Craft Brew: process export jobs	minutes	t	\N	2026-10-09 12:39:47	2026-10-09 12:38:55	2026-09-17 06:45:29.782098	2026-09-17 06:45:29.782098
+23	440	1	1	-1	5	1	1	Craft Brew: process export jobs	minutes	t	\N	2026-10-10 01:58:47	2026-10-10 01:58:29	2026-09-17 06:45:29.782098	2026-09-17 06:45:29.782098
 3	77	1	1	0	5	1	1	Craft Brew: dispatch outbox events	minutes	f	\N	2026-09-17 06:48:08	2026-09-17 06:47:35	2026-09-17 06:40:06.497028	2026-09-17 06:40:06.497028
 15	217	1	1	-1	5	1	1	Digest Emails	days	t	\N	2026-10-10 08:40:21	2026-10-09 08:40:23	2026-09-17 06:40:20.898438	2026-09-17 06:40:20.898438
+4	127	1	1	-1	5	1	1	Mail: Email Queue Manager	hours	t	f	2026-10-10 02:40:12	2026-10-10 01:40:42	2026-09-17 06:40:10.688896	2026-09-17 06:40:10.688896
+12	199	1	60	-1	5	1	1	Partner Autocomplete: Sync with remote DB	minutes	t	f	2026-10-10 02:40:18	2026-10-10 01:40:42	2026-09-17 06:40:18.537345	2026-09-17 06:40:18.537345
 17	296	1	1	-1	5	1	1	Account: Post draft entries with auto_post enabled and accounting date up to today	days	t	f	2026-10-10 02:00:29	2026-10-09 02:01:01	2026-09-17 06:40:24.625829	2026-09-17 06:40:24.625829
+8	131	1	1	-1	5	1	1	Notification: Send scheduled message notifications	hours	t	f	2026-10-10 02:40:12	2026-10-10 01:40:42	2026-09-17 06:40:10.688896	2026-09-17 06:40:10.688896
+13	203	1	1	-1	5	1	1	SMS: SMS Queue Manager	hours	t	f	2026-10-10 02:40:20	2026-10-10 01:40:42	2026-09-17 06:40:19.155712	2026-09-17 06:40:19.155712
+14	213	1	1	-1	5	1	1	Snailmail: process letters queue	hours	t	f	2026-10-10 02:40:20	2026-10-10 01:40:42	2026-09-17 06:40:20.357336	2026-09-17 06:40:20.357336
 1	34	1	1	-1	3	1	1	Base: Auto-vacuum internal data	days	t	\N	2026-10-10 06:40:05	2026-10-09 12:30:45	2026-09-17 06:39:59.151281	2026-10-09 10:10:59.285446
 9	132	1	1	-1	5	1	1	Mail: send web push notification	days	t	t	2026-10-10 06:40:12	2026-10-09 07:16:58	2026-09-17 06:40:10.688896	2026-09-17 06:40:10.688896
 18	297	1	1	-1	5	1	1	Send invoices automatically	days	t	\N	2026-10-10 06:40:29	2026-10-09 07:16:58	2026-09-17 06:40:24.625829	2026-09-17 06:40:24.625829
@@ -101100,6 +101126,19 @@ COPY public.res_users_identitycheck (id, create_uid, write_uid, request, passwor
 
 COPY public.res_users_log (id, create_uid, write_uid, create_date, write_date) FROM stdin;
 145	2	2	2026-10-09 12:30:01.078612	2026-10-09 12:30:01.078612
+146	2	2	2026-10-10 00:49:53.454945	2026-10-10 00:49:53.454945
+147	2	2	2026-10-10 00:59:52.313686	2026-10-10 00:59:52.313686
+148	2	2	2026-10-10 01:05:47.770551	2026-10-10 01:05:47.770551
+149	2	2	2026-10-10 01:12:51.473506	2026-10-10 01:12:51.473506
+150	2	2	2026-10-10 01:12:54.424805	2026-10-10 01:12:54.424805
+151	2	2	2026-10-10 01:28:48.579796	2026-10-10 01:28:48.579796
+152	2	2	2026-10-10 01:30:35.911308	2026-10-10 01:30:35.911308
+153	2	2	2026-10-10 01:37:32.18256	2026-10-10 01:37:32.18256
+154	2	2	2026-10-10 01:39:31.482447	2026-10-10 01:39:31.482447
+155	2	2	2026-10-10 01:40:35.265533	2026-10-10 01:40:35.265533
+156	2	2	2026-10-10 01:43:31.134478	2026-10-10 01:43:31.134478
+157	2	2	2026-10-10 01:44:43.907779	2026-10-10 01:44:43.907779
+158	2	2	2026-10-10 01:47:04.305673	2026-10-10 01:47:04.305673
 49	8	8	2026-09-29 01:46:17.955139	2026-09-29 01:46:17.955139
 \.
 
@@ -102672,7 +102711,7 @@ SELECT pg_catalog.setval('public.base_registry_signaling', 1, true);
 -- Name: brew_api_session_id_seq; Type: SEQUENCE SET; Schema: public; Owner: -
 --
 
-SELECT pg_catalog.setval('public.brew_api_session_id_seq', 146, true);
+SELECT pg_catalog.setval('public.brew_api_session_id_seq', 159, true);
 
 
 --
@@ -102693,7 +102732,7 @@ SELECT pg_catalog.setval('public.brew_approval_step_id_seq', 26, true);
 -- Name: brew_audit_log_id_seq; Type: SEQUENCE SET; Schema: public; Owner: -
 --
 
-SELECT pg_catalog.setval('public.brew_audit_log_id_seq', 289, true);
+SELECT pg_catalog.setval('public.brew_audit_log_id_seq', 302, true);
 
 
 --
@@ -104520,7 +104559,7 @@ SELECT pg_catalog.setval('public.res_users_identitycheck_id_seq', 1, false);
 -- Name: res_users_log_id_seq; Type: SEQUENCE SET; Schema: public; Owner: -
 --
 
-SELECT pg_catalog.setval('public.res_users_log_id_seq', 145, true);
+SELECT pg_catalog.setval('public.res_users_log_id_seq', 158, true);
 
 
 --
@@ -131689,5 +131728,5 @@ ALTER TABLE ONLY public.wizard_ir_model_menu_create
 -- PostgreSQL database dump complete
 --
 
-\unrestrict 4jEVXJCdwy7pL5kEaAI1Oj6rQcUC8P14akccaIgi3DYJbj0iblY4Ih83J78BuQd
+\unrestrict DQcqdJSiuw9k5I43XEAdWrinqOOP44Nh9eEDwQx8oYlr2LVhGgY6e4yoD1CRQcC
 
