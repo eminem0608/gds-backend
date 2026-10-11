@@ -23,4 +23,10 @@
         <field name="prefix">QC-%(y)s%(month)s%(day)s-</field>
         <field name="padding">4</field>
     </record>
+    <record id="seq_brew_purchase_return" model="ir.sequence">
+        <field name="name">采购退货</field>
+        <field name="code">brew.purchase.return</field>
+        <field name="prefix">RT-%(y)s%(month)s%(day)s-</field>
+        <field name="padding">4</field>
+    </record>
 </odoo>

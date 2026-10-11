@@ -18,3 +18,9 @@ access_brew_quality_inspection_user,brew.quality.inspection user,model_brew_qual
 access_brew_quality_inspection_warehouse,brew.quality.inspection warehouse,model_brew_quality_inspection,craft_brew_core.group_brew_warehouse,1,1,1,0
 access_brew_quality_inspection_line_user,brew.quality.inspection.line user,model_brew_quality_inspection_line,base.group_user,1,0,0,0
 access_brew_quality_inspection_line_warehouse,brew.quality.inspection.line warehouse,model_brew_quality_inspection_line,craft_brew_core.group_brew_warehouse,1,1,1,1
+access_brew_purchase_return_user,brew.purchase.return user,model_brew_purchase_return,base.group_user,1,0,0,0
+access_brew_purchase_return_warehouse,brew.purchase.return warehouse,model_brew_purchase_return,craft_brew_core.group_brew_warehouse,1,1,1,0
+access_brew_purchase_return_purchase,brew.purchase.return purchase,model_brew_purchase_return,craft_brew_core.group_brew_purchase,1,1,1,0
+access_brew_purchase_return_line_user,brew.purchase.return.line user,model_brew_purchase_return_line,base.group_user,1,0,0,0
+access_brew_purchase_return_line_warehouse,brew.purchase.return.line warehouse,model_brew_purchase_return_line,craft_brew_core.group_brew_warehouse,1,1,1,1
+access_brew_purchase_return_line_purchase,brew.purchase.return.line purchase,model_brew_purchase_return_line,craft_brew_core.group_brew_purchase,1,1,1,1

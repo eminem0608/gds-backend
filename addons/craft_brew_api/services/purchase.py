@@ -1361,15 +1361,105 @@ class PurchaseService:
         return location
 
     def _serialize_receipt(self, record):
+        order = record.purchase_order_id
+        supplier = order.partner_id
+        lines_data = []
+        total_received = 0.0
+        total_qualified = 0.0
+        total_rejected = 0.0
+        inspection = record.quality_inspection_id
+        inspection_map = {}
+        if inspection:
+            for il in inspection.line_ids:
+                inspection_map[il.receipt_line_id.id] = il
+        return_lines = self.env["brew.purchase.return.line"].sudo().search(
+            [
+                ("purchase_order_line_id", "in", record.line_ids.mapped("purchase_order_line_id").ids),
+                ("return_id.state", "not in", ["cancelled"]),
+            ]
+        )
+        returned_map = {}
+        for rl in return_lines:
+            key = (rl.purchase_order_line_id.id, rl.lot_id.id if rl.lot_id else None)
+            returned_map[key] = returned_map.get(key, 0.0) + rl.return_qty
+        for line in record.line_ids:
+            ol = line.purchase_order_line_id
+            insp = inspection_map.get(line.id)
+            received = line.received_qty
+            qualified = insp.qualified_qty if insp else 0
+            rejected = insp.rejected_qty if insp else 0
+            total_received += received
+            total_qualified += qualified
+            total_rejected += rejected
+            rkey = (ol.id, line.lot_id.id if line.lot_id else None)
+            returned_qty = returned_map.get(rkey, 0.0)
+            stock_available_qty = 0.0
+            if line.lot_id:
+                stock_available_qty = self.env["stock.quant"].sudo()._get_available_quantity(
+                    line.product_id,
+                    record.destination_location_id,
+                    lot_id=line.lot_id,
+                    strict=False,
+                )
+            returnable_qty = max(
+                min(received - returned_qty, stock_available_qty),
+                0.0,
+            )
+            lines_data.append(
+                {
+                    "id": str(line.id),
+                    "order_line_id": str(ol.id),
+                    "product": {
+                        "id": str(line.product_id.id),
+                        "name": line.product_id.display_name,
+                        "brand": getattr(line.product_id.product_tmpl_id, "brew_brand", "") or "",
+                        "specification": getattr(line.product_id.product_tmpl_id, "brew_specification", "") or "",
+                        "material_category": getattr(line.product_id.product_tmpl_id, "brew_material_category", "") or "",
+                    },
+                    "received_qty": received,
+                    "ordered_qty": ol.product_qty,
+                    "price_unit": ol.price_unit,
+                    "package_spec": getattr(ol, "brew_package_spec", "") or "",
+                    "uom": {"id": str(line.uom_id.id), "name": line.uom_id.name},
+                    "lot_name": line.lot_name,
+                    "supplier_lot": line.supplier_lot,
+                    "expiration_date": (
+                        line.expiration_date.isoformat()
+                        if line.expiration_date
+                        else None
+                    ),
+                    "lot_id": str(line.lot_id.id) if line.lot_id else None,
+                    "qualified_qty": qualified,
+                    "rejected_qty": rejected,
+                    "returned_qty": returned_qty,
+                    "stock_available_qty": stock_available_qty,
+                    "returnable_qty": returnable_qty,
+                    "note": "",
+                }
+            )
         return {
             "id": str(record.id),
             "name": record.name,
             "state": record.state,
             "factory": {"id": str(record.factory_id.id), "name": record.factory_id.name},
             "purchase_order": {
-                "id": str(record.purchase_order_id.id),
-                "name": record.purchase_order_id.name,
+                "id": str(order.id),
+                "name": order.name,
+                "state": order.state,
+                "date_order": order.date_order.isoformat() if order.date_order else None,
+                "amount_total": order.amount_total,
+                "currency": order.currency_id.name if order.currency_id else "",
             },
+            "supplier": {
+                "id": str(supplier.id),
+                "name": supplier.name,
+                "code": getattr(supplier, "brew_supplier_code", "") or "",
+            },
+            "purchaser": (
+                {"id": str(order.user_id.id), "name": order.user_id.name}
+                if order.user_id
+                else None
+            ),
             "shipment_id": str(record.shipment_id.id) if record.shipment_id else None,
             "qc_location": {
                 "id": str(record.qc_location_id.id),
@@ -1385,6 +1475,9 @@ class PurchaseService:
                 if record.approval_instance_id
                 else None
             ),
+            "approval_flow": self._approval_flow(record.approval_instance_id),
+            "approval_state": record.approval_instance_id.state if record.approval_instance_id else None,
+            "approval_history": self._approval_history(record._name, record.id),
             "quality_inspection_id": (
                 str(record.quality_inspection_id.id)
                 if record.quality_inspection_id
@@ -1394,37 +1487,44 @@ class PurchaseService:
             "completed_at": (
                 record.completed_at.isoformat() if record.completed_at else None
             ),
-            "lines": [
-                {
-                    "id": str(line.id),
-                    "order_line_id": str(line.purchase_order_line_id.id),
-                    "product": {
-                        "id": str(line.product_id.id),
-                        "name": line.product_id.display_name,
-                    },
-                    "received_qty": line.received_qty,
-                    "uom": {"id": str(line.uom_id.id), "name": line.uom_id.name},
-                    "lot_name": line.lot_name,
-                    "supplier_lot": line.supplier_lot,
-                    "expiration_date": (
-                        line.expiration_date.isoformat()
-                        if line.expiration_date
-                        else None
-                    ),
-                    "lot_id": str(line.lot_id.id) if line.lot_id else None,
-                }
-                for line in record.line_ids
-            ],
+            "create_date": record.create_date.isoformat() if record.create_date else None,
+            "creator": record.create_uid.name if record.create_uid else "",
+            "write_date": record.write_date.isoformat() if record.write_date else None,
+            "note": record.note or "",
+            "return_reason": record.return_reason or "",
+            "total_received": total_received,
+            "total_qualified": total_qualified,
+            "total_rejected": total_rejected,
+            "lines": lines_data,
             "version": self._version(record),
         }
 
-    def receipts(self, page, page_size, state=None):
+    def receipts(self, page, page_size, filters=None):
+        filters = filters or {}
         domain = [
             ("company_id", "=", self.company.id),
             ("factory_id", "in", self._factory_ids()),
         ]
-        if state:
-            domain.append(("state", "=", state))
+        if filters.get("state"):
+            domain.append(("state", "=", filters["state"]))
+        if filters.get("keyword"):
+            kw = filters["keyword"]
+            domain.append(
+                [
+                    "|", "|",
+                    ("name", "ilike", kw),
+                    ("purchase_order_id.name", "ilike", kw),
+                    ("line_ids.product_id", "ilike", kw),
+                ]
+            )
+        if filters.get("supplier_name"):
+            domain.append(("purchase_order_id.partner_id.name", "ilike", filters["supplier_name"]))
+        if filters.get("factory_id"):
+            domain.append(("factory_id", "=", int(filters["factory_id"])))
+        if filters.get("date_from"):
+            domain.append(("create_date", ">=", filters["date_from"] + " 00:00:00"))
+        if filters.get("date_to"):
+            domain.append(("create_date", "<=", filters["date_to"] + " 23:59:59"))
         model = self.env["brew.receipt"].sudo()
         total = model.search_count(domain)
         records = model.search(
@@ -1501,6 +1601,91 @@ class PurchaseService:
         )
         return receipt, self._serialize_receipt(receipt)
 
+    def update_receipt(self, receipt_id, payload):
+        self._require_warehouse()
+        receipt = self._record("brew.receipt", receipt_id)
+        approval_returned = (
+            receipt.state == "pending_approval"
+            and receipt.approval_instance_id
+            and receipt.approval_instance_id.state == "returned"
+        )
+        if (
+            (receipt.state != "draft" and not approval_returned)
+            or receipt.picking_id
+            or receipt.quality_inspection_id
+        ):
+            raise ApiError(
+                "STATE_PRECONDITION_FAILED",
+                "只有草稿或审批退回且尚未到货的收货单可以编辑。",
+                422,
+            )
+        self._check_version(receipt, payload.get("version"))
+
+        vals = {}
+        if "qc_location_id" in payload:
+            qc_location = self._location(payload.get("qc_location_id"), receipt.factory_id)
+            if qc_location.brew_location_type != "qc":
+                raise ApiError("VALIDATION_RELATION", "到货必须先进入待检库位。", 422)
+            vals["qc_location_id"] = qc_location.id
+        if "destination_location_id" in payload:
+            vals["destination_location_id"] = self._location(
+                payload.get("destination_location_id"), receipt.factory_id
+            ).id
+        if "note" in payload:
+            vals["note"] = payload.get("note")
+
+        if "lines" in payload:
+            incoming = payload.get("lines") or []
+            if not incoming:
+                raise ApiError("VALIDATION_REQUIRED", "收货明细不能为空。", 422)
+            existing_by_id = {line.id: line for line in receipt.line_ids}
+            used_order_line_ids = set()
+            used_lot_names = set(receipt.line_ids.mapped("lot_name"))
+            commands = []
+            next_lot_index = len(receipt.line_ids) + 1
+            for values in incoming:
+                existing = None
+                if values.get("id"):
+                    existing = existing_by_id.pop(int(values["id"]), None)
+                    if not existing:
+                        raise ApiError("VALIDATION_RELATION", "收货明细不属于当前收货单。", 422)
+                order_line_id = int(
+                    values.get("order_line_id")
+                    or (existing.purchase_order_line_id.id if existing else 0)
+                )
+                order_line = receipt.purchase_order_id.order_line.filtered(
+                    lambda line: line.id == order_line_id and not line.display_type
+                )
+                quantity = float(values.get("received_qty") or 0)
+                if not order_line or quantity <= 0:
+                    raise ApiError("VALIDATION_REQUIRED", "收货明细和数量不能为空。", 422)
+                if order_line_id in used_order_line_ids:
+                    raise ApiError("VALIDATION_RELATION", "同一采购明细不能重复登记。", 422)
+                used_order_line_ids.add(order_line_id)
+                line_values = {
+                    "purchase_order_line_id": order_line_id,
+                    "received_qty": quantity,
+                    "supplier_lot": values.get("supplier_lot"),
+                    "expiration_date": values.get("expiration_date") or False,
+                }
+                if existing:
+                    commands.append(Command.update(existing.id, line_values))
+                else:
+                    lot_name = "%s-%02d" % (receipt.name, next_lot_index)
+                    while lot_name in used_lot_names:
+                        next_lot_index += 1
+                        lot_name = "%s-%02d" % (receipt.name, next_lot_index)
+                    line_values["lot_name"] = lot_name
+                    used_lot_names.add(lot_name)
+                    next_lot_index += 1
+                    commands.append(Command.create(line_values))
+            commands.extend(Command.delete(line.id) for line in existing_by_id.values())
+            vals["line_ids"] = commands
+
+        if vals:
+            receipt.write(vals)
+        return receipt, self._serialize_receipt(receipt)
+
     def receipt_action(self, receipt_id, action, payload):
         self._require_warehouse()
         receipt = self._record("brew.receipt", receipt_id)
@@ -1514,28 +1699,24 @@ class PurchaseService:
         return receipt, self._serialize_receipt(receipt)
 
     def _serialize_inspection(self, record):
-        return {
-            "id": str(record.id),
-            "name": record.name,
-            "state": record.state,
-            "receipt_id": str(record.receipt_id.id),
-            "receipt_name": record.receipt_id.name,
-            "factory": {"id": str(record.factory_id.id), "name": record.factory_id.name},
-            "inspector": (
-                {"id": str(record.inspector_id.id), "name": record.inspector_id.name}
-                if record.inspector_id
-                else None
-            ),
-            "inspected_at": (
-                record.inspected_at.isoformat() if record.inspected_at else None
-            ),
-            "note": record.note,
-            "lines": [
+        receipt = record.receipt_id
+        order = receipt.purchase_order_id if receipt else self.env["purchase.order"]
+        supplier = order.partner_id if order else self.env["res.partner"]
+        lines_data = []
+        for line in record.line_ids:
+            rl = line.receipt_line_id
+            ol = rl.purchase_order_line_id if rl else self.env["purchase.order.line"]
+            tmpl = line.product_id.product_tmpl_id
+            lines_data.append(
                 {
                     "id": str(line.id),
+                    "receipt_line_id": str(rl.id) if rl else None,
                     "product": {
                         "id": str(line.product_id.id),
                         "name": line.product_id.display_name,
+                        "brand": getattr(tmpl, "brew_brand", "") or "",
+                        "specification": getattr(tmpl, "brew_specification", "") or "",
+                        "material_category": getattr(tmpl, "brew_material_category", "") or "",
                     },
                     "lot": {"id": str(line.lot_id.id), "name": line.lot_id.name},
                     "inspected_qty": line.inspected_qty,
@@ -1544,20 +1725,91 @@ class PurchaseService:
                     "uom": {"id": str(line.uom_id.id), "name": line.uom_id.name},
                     "disposition": line.disposition,
                     "result": line.result_json,
+                    "package_spec": getattr(ol, "brew_package_spec", "") or "",
+                    "supplier_lot": rl.supplier_lot if rl else "",
+                    "expiration_date": (
+                        rl.expiration_date.isoformat()
+                        if rl and rl.expiration_date
+                        else None
+                    ),
+                    "price_unit": ol.price_unit if ol else 0,
                     "note": line.note,
                 }
-                for line in record.line_ids
-            ],
+            )
+        total_inspected = sum(line.inspected_qty for line in record.line_ids)
+        total_qualified = sum(line.qualified_qty for line in record.line_ids)
+        total_rejected = sum(line.rejected_qty for line in record.line_ids)
+        return {
+            "id": str(record.id),
+            "name": record.name,
+            "state": record.state,
+            "receipt_id": str(receipt.id) if receipt else None,
+            "receipt_name": receipt.name if receipt else "",
+            "receipt_state": receipt.state if receipt else "",
+            "factory": {"id": str(record.factory_id.id), "name": record.factory_id.name},
+            "purchase_order": {
+                "id": str(order.id),
+                "name": order.name,
+                "state": order.state,
+                "date_order": order.date_order.isoformat() if order.date_order else None,
+            } if order else None,
+            "supplier": {
+                "id": str(supplier.id),
+                "name": supplier.name,
+                "code": getattr(supplier, "brew_supplier_code", "") or "",
+            } if supplier else None,
+            "inspector": (
+                {"id": str(record.inspector_id.id), "name": record.inspector_id.name}
+                if record.inspector_id
+                else None
+            ),
+            "inspected_at": (
+                record.inspected_at.isoformat() if record.inspected_at else None
+            ),
+            "approval_state": (
+                record.approval_instance_id.state
+                if record.approval_instance_id
+                else "none"
+            ),
+            "approval_history": self._approval_history(record._name, record.id),
+            "return_reason": record.return_reason or "",
+            "create_date": record.create_date.isoformat() if record.create_date else None,
+            "creator": record.create_uid.name if record.create_uid else "",
+            "write_date": record.write_date.isoformat() if record.write_date else None,
+            "note": record.note,
+            "total_inspected": total_inspected,
+            "total_qualified": total_qualified,
+            "total_rejected": total_rejected,
+            "lines": lines_data,
             "version": self._version(record),
         }
 
-    def inspections(self, page, page_size, state=None):
+    def inspections(self, page, page_size, filters=None):
+        filters = filters or {}
         domain = [
             ("company_id", "=", self.company.id),
             ("factory_id", "in", self._factory_ids()),
         ]
-        if state:
-            domain.append(("state", "=", state))
+        if filters.get("state"):
+            domain.append(("state", "=", filters["state"]))
+        if filters.get("keyword"):
+            kw = filters["keyword"]
+            domain.append(
+                [
+                    "|", "|",
+                    ("name", "ilike", kw),
+                    ("receipt_id.name", "ilike", kw),
+                    ("line_ids.product_id", "ilike", kw),
+                ]
+            )
+        if filters.get("supplier_name"):
+            domain.append(("receipt_id.purchase_order_id.partner_id.name", "ilike", filters["supplier_name"]))
+        if filters.get("factory_id"):
+            domain.append(("factory_id", "=", int(filters["factory_id"])))
+        if filters.get("date_from"):
+            domain.append(("create_date", ">=", filters["date_from"] + " 00:00:00"))
+        if filters.get("date_to"):
+            domain.append(("create_date", "<=", filters["date_to"] + " 23:59:59"))
         model = self.env["brew.quality.inspection"].sudo()
         total = model.search_count(domain)
         records = model.search(
@@ -1582,8 +1834,8 @@ class PurchaseService:
             "brew.quality.inspection", inspection_id
         )
         self._check_version(inspection, payload.get("version"))
-        if inspection.state != "draft":
-            raise ApiError("STATE_PRECONDITION_FAILED", "已完成质检不可修改。", 422)
+        if inspection.state not in {"draft", "returned"}:
+            raise ApiError("STATE_PRECONDITION_FAILED", "只有待录入或已退回的质检单可以修改。", 422)
         by_id = {line.id: line for line in inspection.line_ids}
         incoming = payload.get("lines") or []
         if not incoming:
@@ -1617,11 +1869,414 @@ class PurchaseService:
         self._require_warehouse()
         inspection = self._record("brew.quality.inspection", inspection_id)
         self._check_version(inspection, payload.get("version"))
-        if action == "pass" and any(inspection.line_ids.mapped("rejected_qty")):
-            raise ApiError("STATE_PRECONDITION_FAILED", "存在不合格数量时不能执行全部合格。", 422)
-        if action not in {"pass", "reject"}:
+        if action not in {"submit"}:
             raise ApiError("RESOURCE_NOT_FOUND", "质检动作不存在。", 404)
-        if action == "reject" and not any(inspection.line_ids.mapped("rejected_qty")):
-            raise ApiError("STATE_PRECONDITION_FAILED", "未录入不合格数量。", 422)
-        inspection.action_complete(self.user)
+        inspection.action_submit(self.user, payload.get("submission_comment"))
         return inspection, self._serialize_inspection(inspection)
+
+    # ── Purchase Returns ──────────────────────────────────────────
+
+    def _serialize_return(self, record):
+        order = record.purchase_order_id
+        supplier = record.partner_id
+        lines_data = []
+        for line in record.line_ids:
+            tmpl = line.product_id.product_tmpl_id
+            ol = line.purchase_order_line_id
+            lines_data.append(
+                {
+                    "id": str(line.id),
+                    "product": {
+                        "id": str(line.product_id.id),
+                        "name": line.product_id.display_name,
+                        "brand": getattr(tmpl, "brew_brand", "") or "",
+                        "specification": getattr(tmpl, "brew_specification", "") or "",
+                        "material_category": getattr(tmpl, "brew_material_category", "") or "",
+                    },
+                    "lot": {"id": str(line.lot_id.id), "name": line.lot_id.name} if line.lot_id else None,
+                    "purchase_order_line_id": str(ol.id) if ol else None,
+                    "return_qty": line.return_qty,
+                    "uom": {"id": str(line.uom_id.id), "name": line.uom_id.name},
+                    "price_unit": line.price_unit,
+                    "amount": line.amount,
+                    "package_spec": getattr(ol, "brew_package_spec", "") or "",
+                    "logistics_no": line.logistics_no or "",
+                    "note": line.note or "",
+                }
+            )
+        return {
+            "id": str(record.id),
+            "name": record.name,
+            "state": record.state,
+            "factory": {"id": str(record.factory_id.id), "name": record.factory_id.name},
+            "purchase_order": {
+                "id": str(order.id),
+                "name": order.name,
+                "state": order.state,
+                "date_order": order.date_order.isoformat() if order.date_order else None,
+                "currency": order.currency_id.name if order.currency_id else "",
+            } if order else None,
+            "supplier": {
+                "id": str(supplier.id),
+                "name": supplier.name,
+                "code": getattr(supplier, "brew_supplier_code", "") or "",
+            } if supplier else None,
+            "receipt_id": str(record.receipt_id.id) if record.receipt_id else None,
+            "receipt_name": record.receipt_id.name if record.receipt_id else "",
+            "inspection_id": str(record.inspection_id.id) if record.inspection_id else None,
+            "approval_instance_id": (
+                str(record.approval_instance_id.id)
+                if record.approval_instance_id
+                else None
+            ),
+            "approval_flow": self._approval_flow(record.approval_instance_id),
+            "approval_history": self._approval_history(record._name, record.id),
+            "return_reason": record.return_reason or "",
+            "note": record.note or "",
+            "logistics_no": record.logistics_no or "",
+            "amount_total": record.amount_total,
+            "create_date": record.create_date.isoformat() if record.create_date else None,
+            "creator": record.create_uid.name if record.create_uid else "",
+            "write_date": record.write_date.isoformat() if record.write_date else None,
+            "lines": lines_data,
+            "version": self._version(record),
+        }
+
+    def returns(self, page, page_size, filters=None):
+        filters = filters or {}
+        domain = [
+            ("company_id", "=", self.company.id),
+            ("factory_id", "in", self._factory_ids()),
+        ]
+        if filters.get("state"):
+            domain.append(("state", "=", filters["state"]))
+        if filters.get("keyword"):
+            kw = filters["keyword"]
+            domain.append(
+                [
+                    "|", "|",
+                    ("name", "ilike", kw),
+                    ("purchase_order_id.name", "ilike", kw),
+                    ("line_ids.product_id", "ilike", kw),
+                ]
+            )
+        if filters.get("supplier_name"):
+            domain.append(("partner_id.name", "ilike", filters["supplier_name"]))
+        if filters.get("factory_id"):
+            domain.append(("factory_id", "=", int(filters["factory_id"])))
+        if filters.get("material_category"):
+            domain.append(("line_ids.product_id.brew_material_category", "=", filters["material_category"]))
+        if filters.get("date_from"):
+            domain.append(("create_date", ">=", filters["date_from"] + " 00:00:00"))
+        if filters.get("date_to"):
+            domain.append(("create_date", "<=", filters["date_to"] + " 23:59:59"))
+        model = self.env["brew.purchase.return"].sudo()
+        total = model.search_count(domain)
+        records = model.search(
+            domain,
+            offset=(page - 1) * page_size,
+            limit=page_size,
+            order="create_date desc,id desc",
+        )
+        return [self._serialize_return(item) for item in records], total
+
+    def get_returnable_lines(self, order_id):
+        order = self._record("purchase.order", order_id, factory_field="brew_factory_id")
+        receipts = self.env["brew.receipt"].sudo().search(
+            [
+                ("purchase_order_id", "=", order.id),
+                ("state", "in", ["done"]),
+                ("company_id", "=", self.company.id),
+                ("factory_id", "in", self._factory_ids()),
+            ]
+        )
+        if not receipts:
+            return []
+        receipt_line_map = {}
+        for r in receipts:
+            for rl in r.line_ids:
+                ol_id = rl.purchase_order_line_id.id
+                receipt_line_map.setdefault(ol_id, []).append(rl)
+        all_return_lines = self.env["brew.purchase.return.line"].sudo().search(
+            [
+                ("purchase_order_line_id", "in", list(receipt_line_map.keys())),
+                ("return_id.state", "not in", ["cancelled"]),
+            ]
+        )
+        returned_map = {}
+        for rl in all_return_lines:
+            key = (rl.purchase_order_line_id.id, rl.lot_id.id if rl.lot_id else None)
+            returned_map[key] = returned_map.get(key, 0.0) + rl.return_qty
+        result = []
+        for ol_id, receipt_lines in receipt_line_map.items():
+            ol = self.env["purchase.order.line"].sudo().browse(ol_id)
+            for rline in receipt_lines:
+                rkey = (ol_id, rline.lot_id.id if rline.lot_id else None)
+                returned_qty = returned_map.get(rkey, 0.0)
+                stock_available_qty = 0.0
+                if rline.lot_id:
+                    stock_available_qty = self.env["stock.quant"].sudo()._get_available_quantity(
+                        rline.product_id,
+                        rline.receipt_id.destination_location_id,
+                        lot_id=rline.lot_id,
+                        strict=False,
+                    )
+                returnable_qty = max(
+                    min(rline.received_qty - returned_qty, stock_available_qty),
+                    0.0,
+                )
+                if returnable_qty <= 0:
+                    continue
+                tmpl = rline.product_id.product_tmpl_id
+                result.append(
+                    {
+                        "purchase_order_line_id": str(ol_id),
+                        "receipt_line_id": str(rline.id),
+                        "receipt_id": str(rline.receipt_id.id),
+                        "receipt_name": rline.receipt_id.name,
+                        "product": {
+                            "id": str(rline.product_id.id),
+                            "name": rline.product_id.display_name,
+                            "brand": getattr(tmpl, "brew_brand", "") or "",
+                            "specification": getattr(tmpl, "brew_specification", "") or "",
+                            "material_category": getattr(tmpl, "brew_material_category", "") or "",
+                        },
+                        "lot": {"id": str(rline.lot_id.id), "name": rline.lot_id.name} if rline.lot_id else None,
+                        "received_qty": rline.received_qty,
+                        "returned_qty": returned_qty,
+                        "stock_available_qty": stock_available_qty,
+                        "returnable_qty": returnable_qty,
+                        "price_unit": ol.price_unit,
+                        "package_spec": getattr(ol, "brew_package_spec", "") or "",
+                        "uom": {"id": str(rline.uom_id.id), "name": rline.uom_id.name},
+                    }
+                )
+        return result
+
+    def create_return(self, payload):
+        self._require_warehouse()
+        order = self._record("purchase.order", payload.get("purchase_order_id"))
+        if not order.partner_id:
+            raise ApiError("VALIDATION_RELATION", "采购订单缺少供应商信息。", 422)
+        receipts = self.env["brew.receipt"].sudo().search(
+            [
+                ("purchase_order_id", "=", order.id),
+                ("state", "=", "done"),
+                ("company_id", "=", self.company.id),
+            ]
+        )
+        if not receipts:
+            raise ApiError("VALIDATION_RELATION", "该采购订单暂无已入库的收货记录，无法创建退货。", 422)
+        factory = self._factory(payload.get("factory_id")) if payload.get("factory_id") else order.brew_factory_id
+        if not factory:
+            raise ApiError("VALIDATION_REQUIRED", "请选择工厂。", 422)
+        receipt = None
+        if payload.get("receipt_id"):
+            receipt = self._record("brew.receipt", payload["receipt_id"])
+        inspection = None
+        if payload.get("inspection_id"):
+            inspection = self._record("brew.quality.inspection", payload["inspection_id"])
+        return_name = (
+            self.env["ir.sequence"].sudo().next_by_code("brew.purchase.return") or "New"
+        )
+        all_return_lines_existing = self.env["brew.purchase.return.line"].sudo().search(
+            [
+                ("purchase_order_line_id", "in", receipts.line_ids.mapped("purchase_order_line_id").ids),
+                ("return_id.state", "not in", ["cancelled"]),
+            ]
+        )
+        returnable_map = {}
+        for rline in receipts.line_ids:
+            ol_id = rline.purchase_order_line_id.id
+            rkey = (ol_id, rline.lot_id.id if rline.lot_id else None)
+            stock_available_qty = 0.0
+            if rline.lot_id:
+                stock_available_qty = self.env["stock.quant"].sudo()._get_available_quantity(
+                    rline.product_id,
+                    rline.receipt_id.destination_location_id,
+                    lot_id=rline.lot_id,
+                    strict=False,
+                )
+            returnable_map[rkey] = min(
+                returnable_map.get(rkey, 0.0) + rline.received_qty,
+                stock_available_qty,
+            )
+        for rl in all_return_lines_existing:
+            rkey = (rl.purchase_order_line_id.id, rl.lot_id.id if rl.lot_id else None)
+            returnable_map[rkey] = returnable_map.get(rkey, 0.0) - rl.return_qty
+        commands = []
+        for values in payload.get("lines") or []:
+            product = self._record("product.product", values.get("product_id"))
+            qty = float(values.get("return_qty") or 0)
+            if qty <= 0:
+                raise ApiError("VALIDATION_RANGE", "退货数量必须大于零。", 422)
+            ol_id = int(values["purchase_order_line_id"]) if values.get("purchase_order_line_id") else None
+            lot_id = int(values["lot_id"]) if values.get("lot_id") else None
+            if ol_id:
+                rkey = (ol_id, lot_id)
+                available = returnable_map.get(rkey, 0.0)
+                if qty > available + 0.001:
+                    raise ApiError("VALIDATION_RANGE", "退货数量超过可退数量（%.3f）。" % available, 422)
+                returnable_map[rkey] = returnable_map.get(rkey, 0.0) - qty
+            uom = self.env["uom.uom"].sudo().browse(int(values.get("uom_id") or product.uom_id.id))
+            ol = None
+            if values.get("purchase_order_line_id"):
+                ol = self.env["purchase.order.line"].sudo().browse(int(values["purchase_order_line_id"]))
+            price = float(values.get("price_unit") or 0)
+            if ol and not price:
+                price = ol.price_unit
+            commands.append(
+                Command.create(
+                    {
+                        "product_id": product.id,
+                        "lot_id": int(values["lot_id"]) if values.get("lot_id") else False,
+                        "purchase_order_line_id": ol.id if ol else False,
+                        "return_qty": qty,
+                        "uom_id": uom.id,
+                        "price_unit": price,
+                        "logistics_no": values.get("logistics_no"),
+                        "note": values.get("note"),
+                    }
+                )
+            )
+        if not commands:
+            raise ApiError("VALIDATION_REQUIRED", "退货明细不能为空。", 422)
+        record = self.env["brew.purchase.return"].sudo().create(
+            {
+                "name": return_name,
+                "company_id": self.company.id,
+                "factory_id": factory.id,
+                "purchase_order_id": order.id,
+                "receipt_id": receipt.id if receipt else False,
+                "inspection_id": inspection.id if inspection else False,
+                "partner_id": order.partner_id.id,
+                "return_reason": payload.get("return_reason"),
+                "note": payload.get("note"),
+                "logistics_no": payload.get("logistics_no"),
+                "line_ids": commands,
+            }
+        )
+        return record, self._serialize_return(record)
+
+    def update_return(self, return_id, payload):
+        self._require_warehouse()
+        record = self._record("brew.purchase.return", return_id)
+        if record.state not in ("draft", "returned"):
+            raise ApiError("STATE_PRECONDITION_FAILED", "只有草稿或已退回状态的退货单可以编辑。", 422)
+        self._check_version(record, payload.get("version"))
+        vals = {}
+        if "return_reason" in payload:
+            vals["return_reason"] = payload["return_reason"]
+        if "note" in payload:
+            vals["note"] = payload["note"]
+        if "logistics_no" in payload:
+            vals["logistics_no"] = payload["logistics_no"]
+        if "lines" in payload:
+            by_id = {line.id: line for line in record.line_ids}
+            editable_capacity = {
+                (
+                    int(line["purchase_order_line_id"]),
+                    int(line["lot"]["id"]) if line.get("lot") else None,
+                ): line["returnable_qty"]
+                for line in self.get_returnable_lines(record.purchase_order_id.id)
+            }
+            for line in record.line_ids:
+                key = (
+                    line.purchase_order_line_id.id,
+                    line.lot_id.id if line.lot_id else None,
+                )
+                editable_capacity[key] = editable_capacity.get(key, 0.0) + line.return_qty
+
+            requested_by_source = {}
+            for values in payload["lines"]:
+                existing = None
+                if values.get("id"):
+                    existing = by_id.get(int(values["id"]))
+                    if not existing:
+                        raise ApiError("VALIDATION_RELATION", "退货明细不属于当前退货单。", 422)
+                order_line_id = (
+                    existing.purchase_order_line_id.id
+                    if existing
+                    else int(values.get("purchase_order_line_id") or 0)
+                )
+                lot_id = (
+                    existing.lot_id.id
+                    if existing and existing.lot_id
+                    else int(values.get("lot_id") or 0) or None
+                )
+                if not order_line_id:
+                    raise ApiError("VALIDATION_RELATION", "退货明细必须关联采购订单明细。", 422)
+                qty = float(
+                    values.get("return_qty")
+                    if "return_qty" in values
+                    else existing.return_qty
+                )
+                if qty <= 0:
+                    raise ApiError("VALIDATION_RANGE", "退货数量必须大于零。", 422)
+                key = (order_line_id, lot_id)
+                requested_by_source[key] = requested_by_source.get(key, 0.0) + qty
+                available = editable_capacity.get(key, 0.0)
+                if requested_by_source[key] > available + 0.001:
+                    raise ApiError(
+                        "VALIDATION_RANGE",
+                        "退货数量超过当前库存可退数量（%.3f）。" % available,
+                        422,
+                    )
+
+            new_commands = []
+            for values in payload["lines"]:
+                if values.get("id"):
+                    line = by_id.pop(int(values["id"]), None)
+                    if line:
+                        line.write(
+                            {
+                                "return_qty": float(values.get("return_qty") or line.return_qty),
+                                "logistics_no": values.get("logistics_no", line.logistics_no),
+                                "note": values.get("note", line.note),
+                            }
+                        )
+                else:
+                    product = self._record("product.product", values.get("product_id"))
+                    qty = float(values.get("return_qty") or 0)
+                    if qty <= 0:
+                        raise ApiError("VALIDATION_RANGE", "退货数量必须大于零。", 422)
+                    uom = self.env["uom.uom"].sudo().browse(int(values.get("uom_id") or product.uom_id.id))
+                    new_commands.append(
+                        Command.create(
+                            {
+                                "product_id": product.id,
+                                "lot_id": int(values["lot_id"]) if values.get("lot_id") else False,
+                                "purchase_order_line_id": int(values["purchase_order_line_id"]) if values.get("purchase_order_line_id") else False,
+                                "return_qty": qty,
+                                "uom_id": uom.id,
+                                "price_unit": float(values.get("price_unit") or 0),
+                                "logistics_no": values.get("logistics_no"),
+                                "note": values.get("note"),
+                            }
+                        )
+                    )
+            for leftover in by_id.values():
+                leftover.unlink()
+            if new_commands:
+                record.write({"line_ids": new_commands})
+        if vals:
+            record.write(vals)
+        return record, self._serialize_return(record)
+
+    def return_action(self, return_id, action, payload):
+        self._require_warehouse()
+        record = self._record("brew.purchase.return", return_id)
+        self._check_version(record, payload.get("version"))
+        if action == "submit":
+            record.action_submit(self.user)
+        elif action == "approve":
+            record.action_approve()
+        elif action == "return":
+            record.action_return(payload.get("reason", ""))
+        elif action == "execute":
+            record.action_execute()
+        elif action == "cancel":
+            record.action_cancel()
+        else:
+            raise ApiError("RESOURCE_NOT_FOUND", "退货动作不存在。", 404)
+        return record, self._serialize_return(record)

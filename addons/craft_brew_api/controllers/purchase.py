@@ -240,7 +240,20 @@ class PurchaseController(BrewApiController):
             if not mutation:
                 page, size = self._purchase_paging()
                 data, total = service.receipts(
-                    page, size, request.httprequest.args.get("state")
+                    page,
+                    size,
+                    {
+                        key: request.httprequest.args.get(key)
+                        for key in (
+                            "keyword",
+                            "supplier_name",
+                            "factory_id",
+                            "state",
+                            "date_from",
+                            "date_to",
+                        )
+                        if request.httprequest.args.get(key)
+                    },
                 )
                 return self._purchase_page_response(data, total, page, size, request_id)
             payload = self._json_body()
@@ -250,6 +263,27 @@ class PurchaseController(BrewApiController):
             receipt, data = service.create_receipt(payload)
             self._audit("purchase_receipt", "create", request_id, user, company, {"id": receipt.id})
             return self._complete_idempotency(idem, data, 201)
+        except Exception as exc:
+            return self._error_response(exc, request_id)
+
+    @http.route("/api/v1/receipts/<int:receipt_id>", type="http", auth="public", methods=["GET", "PATCH"], csrf=False)
+    def receipt_detail(self, receipt_id):
+        request_id = self._request_id()
+        try:
+            mutation = request.httprequest.method == "PATCH"
+            user, company, service = self._purchase_context(mutation)
+            if mutation:
+                payload = self._json_body()
+                idem, replay = self._start_idempotency(user, company, payload)
+                if replay:
+                    return replay
+                record, data = service.update_receipt(receipt_id, payload)
+                self._audit("purchase_receipt", "update", request_id, user, company, {"id": record.id})
+                return self._complete_idempotency(idem, data)
+            record = service._record("brew.receipt", receipt_id)
+            return self._response(
+                service._serialize_receipt(record), request_id=request_id
+            )
         except Exception as exc:
             return self._error_response(exc, request_id)
 
@@ -279,7 +313,20 @@ class PurchaseController(BrewApiController):
             if not mutation:
                 page, size = self._purchase_paging()
                 data, total = service.inspections(
-                    page, size, request.httprequest.args.get("state")
+                    page,
+                    size,
+                    {
+                        key: request.httprequest.args.get(key)
+                        for key in (
+                            "keyword",
+                            "supplier_name",
+                            "factory_id",
+                            "state",
+                            "date_from",
+                            "date_to",
+                        )
+                        if request.httprequest.args.get(key)
+                    },
                 )
                 return self._purchase_page_response(data, total, page, size, request_id)
             payload = self._json_body()
@@ -288,6 +335,18 @@ class PurchaseController(BrewApiController):
                 return replay
             inspection, data = service.inspection_for_receipt(payload)
             return self._complete_idempotency(idem, data, 200)
+        except Exception as exc:
+            return self._error_response(exc, request_id)
+
+    @http.route("/api/v1/quality-inspections/<int:inspection_id>", type="http", auth="public", methods=["GET"], csrf=False)
+    def inspection_detail(self, inspection_id):
+        request_id = self._request_id()
+        try:
+            _user, _company, service = self._purchase_context(False)
+            record = service._record("brew.quality.inspection", inspection_id)
+            return self._response(
+                service._serialize_inspection(record), request_id=request_id
+            )
         except Exception as exc:
             return self._error_response(exc, request_id)
 
@@ -310,7 +369,7 @@ class PurchaseController(BrewApiController):
     def inspection_action(self, inspection_id, action):
         request_id = self._request_id()
         try:
-            if action not in {"pass", "reject"}:
+            if action not in {"submit"}:
                 raise ApiError("RESOURCE_NOT_FOUND", "质检动作不存在。", 404)
             payload = self._json_body()
             user, company, service = self._purchase_context(True)
@@ -319,6 +378,90 @@ class PurchaseController(BrewApiController):
                 return replay
             inspection, data = service.inspection_action(inspection_id, action, payload)
             self._audit("quality_inspection", action, request_id, user, company, {"id": inspection.id})
+            return self._complete_idempotency(idem, data)
+        except Exception as exc:
+            return self._error_response(exc, request_id)
+
+    @http.route("/api/v1/purchase-returns", type="http", auth="public", methods=["GET", "POST"], csrf=False)
+    def purchase_returns(self):
+        request_id = self._request_id()
+        try:
+            mutation = request.httprequest.method == "POST"
+            user, company, service = self._purchase_context(mutation)
+            if not mutation:
+                page, size = self._purchase_paging()
+                data, total = service.returns(
+                    page,
+                    size,
+                    {
+                        key: request.httprequest.args.get(key)
+                        for key in (
+                            "keyword",
+                            "supplier_name",
+                            "factory_id",
+                            "material_category",
+                            "state",
+                            "date_from",
+                            "date_to",
+                        )
+                        if request.httprequest.args.get(key)
+                    },
+                )
+                return self._purchase_page_response(data, total, page, size, request_id)
+            payload = self._json_body()
+            idem, replay = self._start_idempotency(user, company, payload)
+            if replay:
+                return replay
+            record, data = service.create_return(payload)
+            self._audit("purchase_return", "create", request_id, user, company, {"id": record.id})
+            return self._complete_idempotency(idem, data, 201)
+        except Exception as exc:
+            return self._error_response(exc, request_id)
+
+    @http.route("/api/v1/purchase-returns/<int:record_id>", type="http", auth="public", methods=["GET", "PATCH"], csrf=False)
+    def purchase_return(self, record_id):
+        request_id = self._request_id()
+        try:
+            mutation = request.httprequest.method == "PATCH"
+            user, company, service = self._purchase_context(mutation)
+            if not mutation:
+                record = service._record("brew.purchase.return", record_id)
+                return self._response(
+                    service._serialize_return(record), request_id=request_id
+                )
+            payload = self._json_body()
+            idem, replay = self._start_idempotency(user, company, payload)
+            if replay:
+                return replay
+            record, data = service.update_return(record_id, payload)
+            self._audit("purchase_return", "update", request_id, user, company, {"id": record.id})
+            return self._complete_idempotency(idem, data)
+        except Exception as exc:
+            return self._error_response(exc, request_id)
+
+    @http.route("/api/v1/purchase-orders/<int:order_id>/returnable-lines", type="http", auth="public", methods=["GET"], csrf=False)
+    def purchase_order_returnable_lines(self, order_id):
+        request_id = self._request_id()
+        try:
+            user, company, service = self._purchase_context(False)
+            data = service.get_returnable_lines(order_id)
+            return self._response(data, request_id=request_id)
+        except Exception as exc:
+            return self._error_response(exc, request_id)
+
+    @http.route("/api/v1/purchase-returns/<int:record_id>/<string:action>", type="http", auth="public", methods=["POST"], csrf=False)
+    def purchase_return_action(self, record_id, action):
+        request_id = self._request_id()
+        try:
+            if action not in {"submit", "approve", "return", "execute", "cancel"}:
+                raise ApiError("RESOURCE_NOT_FOUND", "退货动作不存在。", 404)
+            payload = self._json_body()
+            user, company, service = self._purchase_context(True)
+            idem, replay = self._start_idempotency(user, company, payload)
+            if replay:
+                return replay
+            record, data = service.return_action(record_id, action, payload)
+            self._audit("purchase_return", action, request_id, user, company, {"id": record.id})
             return self._complete_idempotency(idem, data)
         except Exception as exc:
             return self._error_response(exc, request_id)

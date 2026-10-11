@@ -275,3 +275,99 @@ class TestPurchaseRequisition(TransactionCase):
 
         with self.assertRaises(ValidationError):
             order.action_brew_submit(self.env.user)
+
+    def test_quality_inspection_can_be_returned_repeatedly_then_approved(self):
+        supplier = self.env["res.partner"].create(
+            {"name": "Quality Approval Supplier", "supplier_rank": 1}
+        )
+        order = self.env["purchase.order"].create(
+            {
+                "company_id": self.env.company.id,
+                "partner_id": supplier.id,
+                "brew_factory_id": self.factory.id,
+                "order_line": [
+                    (
+                        0,
+                        0,
+                        {
+                            "product_id": self.product.id,
+                            "product_qty": 10,
+                            "product_uom": self.product.uom_id.id,
+                            "price_unit": 8,
+                            "date_planned": fields.Datetime.now(),
+                        },
+                    )
+                ],
+            }
+        )
+        qc_location = self.env["stock.location"].create(
+            {"name": "Quality Approval QC", "usage": "internal", "company_id": self.env.company.id}
+        )
+        stock_location = self.env["stock.location"].create(
+            {"name": "Quality Approval Stock", "usage": "internal", "company_id": self.env.company.id}
+        )
+        receipt = self.env["brew.receipt"].create(
+            {
+                "purchase_order_id": order.id,
+                "qc_location_id": qc_location.id,
+                "destination_location_id": stock_location.id,
+                "line_ids": [
+                    (
+                        0,
+                        0,
+                        {
+                            "purchase_order_line_id": order.order_line.id,
+                            "received_qty": 10,
+                            "lot_name": "QUALITY-APPROVAL-LOT",
+                        },
+                    )
+                ],
+            }
+        )
+        lot = self.env["stock.lot"].create(
+            {
+                "name": "QUALITY-APPROVAL-LOT",
+                "product_id": self.product.id,
+                "company_id": self.env.company.id,
+            }
+        )
+        receipt.line_ids.lot_id = lot
+        inspection = self.env["brew.quality.inspection"].create(
+            {
+                "company_id": self.env.company.id,
+                "factory_id": self.factory.id,
+                "receipt_id": receipt.id,
+                "line_ids": [
+                    (
+                        0,
+                        0,
+                        {
+                            "receipt_line_id": receipt.line_ids.id,
+                            "product_id": self.product.id,
+                            "lot_id": lot.id,
+                            "inspected_qty": 10,
+                            "qualified_qty": 10,
+                            "rejected_qty": 0,
+                            "uom_id": self.product.uom_id.id,
+                        },
+                    )
+                ],
+            }
+        )
+
+        returned_instances = []
+        for cycle in range(1, 4):
+            approval = inspection.action_submit(self.env.user, f"第{cycle}次提交")
+            reason = f"第{cycle}次退回质检"
+            approval.step_ids[0].action_return(self.env.user, reason)
+            inspection.action_return(reason)
+            returned_instances.append(approval)
+
+        final_approval = inspection.action_submit(self.env.user, "已完成全部修改")
+        for step in final_approval.step_ids.sorted("sequence"):
+            step.action_approve(self.env.user, "同意质检结论")
+        inspection.action_approve()
+
+        self.assertTrue(all(item.state == "returned" for item in returned_instances))
+        self.assertEqual(inspection.state, "completed")
+        self.assertEqual(receipt.state, "inspected")

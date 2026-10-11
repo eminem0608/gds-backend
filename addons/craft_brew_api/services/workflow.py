@@ -335,7 +335,19 @@ class WorkflowService:
             order = self.env["purchase.order"].sudo().browse(instance.target_id).exists()
             if order:
                 return {"id": str(step.id), "instance_id": str(instance.id), "name": "采购订单审批 · " + order.display_name, "approval_type": instance.approval_type, "role_code": step.role_code, "sequence": step.sequence, "state": step.state, "instance_state": instance.state, "comment": step.comment or instance.submission_comment, "target_model": instance.target_model, "target_id": str(instance.target_id), "version": step.write_date.isoformat() if step.write_date else None}
-        return {"id": str(step.id), "instance_id": str(instance.id), "name": instance.name, "approval_type": instance.approval_type, "role_code": step.role_code, "sequence": step.sequence, "state": step.state, "instance_state": instance.state, "comment": step.comment, "version": step.write_date.isoformat() if step.write_date else None}
+        if instance.target_model == "brew.purchase.return":
+            ret = self.env["brew.purchase.return"].sudo().browse(instance.target_id).exists()
+            if ret:
+                return {"id": str(step.id), "instance_id": str(instance.id), "name": "采购退货审批 · " + ret.display_name, "approval_type": instance.approval_type, "role_code": step.role_code, "sequence": step.sequence, "state": step.state, "instance_state": instance.state, "comment": step.comment or instance.submission_comment, "target_model": instance.target_model, "target_id": str(instance.target_id), "version": step.write_date.isoformat() if step.write_date else None}
+        if instance.target_model == "brew.receipt":
+            receipt = self.env["brew.receipt"].sudo().browse(instance.target_id).exists()
+            if receipt:
+                return {"id": str(step.id), "instance_id": str(instance.id), "name": "收货超收审批 · " + receipt.display_name, "approval_type": instance.approval_type, "role_code": step.role_code, "sequence": step.sequence, "state": step.state, "instance_state": instance.state, "comment": step.comment or instance.submission_comment, "target_model": instance.target_model, "target_id": str(instance.target_id), "version": step.write_date.isoformat() if step.write_date else None}
+        if instance.target_model == "brew.quality.inspection":
+            inspection = self.env["brew.quality.inspection"].sudo().browse(instance.target_id).exists()
+            if inspection:
+                return {"id": str(step.id), "instance_id": str(instance.id), "name": "来料质检审批 · " + inspection.display_name, "approval_type": instance.approval_type, "role_code": step.role_code, "sequence": step.sequence, "state": step.state, "instance_state": instance.state, "comment": step.comment or instance.submission_comment, "target_model": instance.target_model, "target_id": str(instance.target_id), "version": step.write_date.isoformat() if step.write_date else None}
+        return {"id": str(step.id), "instance_id": str(instance.id), "name": instance.name, "approval_type": instance.approval_type, "role_code": step.role_code, "sequence": step.sequence, "state": step.state, "instance_state": instance.state, "comment": step.comment, "target_model": instance.target_model, "target_id": str(instance.target_id), "version": step.write_date.isoformat() if step.write_date else None}
 
     def approval_action(self, step_id, action, payload):
         step = self.env["brew.approval.step"].sudo().search([("id", "=", int(step_id)), ("company_id", "=", self.company.id)], limit=1)
@@ -356,6 +368,14 @@ class WorkflowService:
                     target = self.env["purchase.order"].sudo().browse(instance.target_id).exists()
                     if target and target.brew_approval_state == 'pending':
                         target.action_brew_approve()
+                elif instance.target_model == "brew.purchase.return":
+                    target = self.env["brew.purchase.return"].sudo().browse(instance.target_id).exists()
+                    if target and target.state == 'submitted':
+                        target.action_approve()
+                elif instance.target_model == "brew.quality.inspection":
+                    target = self.env["brew.quality.inspection"].sudo().browse(instance.target_id).exists()
+                    if target and target.state == "submitted":
+                        target.action_approve()
         elif action == "return":
             comment = str(payload.get("comment") or "").strip()
             step.action_return(self.user, comment)
@@ -370,6 +390,18 @@ class WorkflowService:
                 target = self.env["purchase.order"].sudo().browse(instance.target_id).exists()
                 if target and target.brew_approval_state == 'pending':
                     target.write({"brew_approval_state": "returned", "brew_approval_return_reason": comment})
+            elif instance.target_model == "brew.purchase.return":
+                target = self.env["brew.purchase.return"].sudo().browse(instance.target_id).exists()
+                if target and target.state in ('submitted', 'returned'):
+                    target.action_return(comment)
+            elif instance.target_model == "brew.receipt":
+                target = self.env["brew.receipt"].sudo().browse(instance.target_id).exists()
+                if target and target.state == 'pending_approval':
+                    target.write({"return_reason": comment})
+            elif instance.target_model == "brew.quality.inspection":
+                target = self.env["brew.quality.inspection"].sudo().browse(instance.target_id).exists()
+                if target and target.state == "submitted":
+                    target.action_return(comment)
         elif action == "transfer":
             target = self.env["res.users"].sudo().search([("id", "=", int(payload.get("user_id") or 0)), ("company_ids", "in", [self.company.id]), ("active", "=", True)], limit=1)
             if not target: raise ApiError("RESOURCE_NOT_FOUND", "目标用户不存在。", 404)
