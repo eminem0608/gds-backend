@@ -2,7 +2,7 @@
 -- PostgreSQL database dump
 --
 
-\restrict QeGdQREIIhWJHln6TzYq83tXiRcfVflxCvIwZv4r3MkaRI7xN9Fbc0WCPt9lBvg
+\restrict D6cHuXhICCz96hAQvsn05E0xoCp47RhS3e3fKl9rxJRldNpSS6FTWGsT0qhhjK3
 
 -- Dumped from database version 15.19 (Debian 15.19-1.pgdg13+2)
 -- Dumped by pg_dump version 15.19 (Debian 15.19-1.pgdg13+2)
@@ -58487,6 +58487,10 @@ COPY public.brew_api_session (id, user_id, company_id, session_version, create_u
 187	2	1	1	2	2	3af32f9a701aae0a41426ff30ea97b425e8954cafbc5eccff1bc3e595db20ad8	52104595f5502e27ca216968e6903866f87da51ee04ffd3dabc84ec7f7a88f09	Fix smoke	fix-smoke	Mozilla/5.0 (Windows NT; Windows NT 10.0; zh-CN) WindowsPowerShell/5.1.22621.5909	172.18.0.1	\N	2026-10-11 14:36:57	2026-11-10 14:06:57	2026-10-11 14:06:57	\N	2026-10-11 14:06:57.375087	2026-10-11 14:06:57.375087	1
 188	2	1	1	2	2	2acd1873dd506f264bc39f9298fc645d14d61c6ecb51a8d18ca36ad7c9a55773	ee76f7600d1acae4d67c602a1fa51e50d38045d53cb0621c050654116348a2e3	Web 管理端	web-browser	Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/153.0.0.0 Safari/537.36	172.18.0.1	\N	2026-10-11 14:43:29	2026-11-10 14:13:29	2026-10-11 14:13:29	\N	2026-10-11 14:13:29.167969	2026-10-11 14:13:29.167969	1
 189	2	1	1	2	2	f56e4f5d5d93aea693d2792b82be1904d62d2b69385d8c92a74f450741eef6c5	a31c110f63c45af74fcf62b1b22bb1e2b68e1a3a6cea77182ab62ca5c5bda46e	Web 管理端	web-browser	Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/153.0.0.0 Safari/537.36	172.18.0.1	\N	2026-10-11 14:56:14	2026-11-10 14:26:14	2026-10-11 14:26:14	\N	2026-10-11 14:26:14.029511	2026-10-11 14:26:14.029511	1
+190	2	1	1	2	2	90e0875d73dcfcce9af4190f4ee37eff57dc7bb3d8beca9f030126b44af5c794	932be5436d8d2214881409887e985bcf4de2885b9b263563b3879441e562c023	Web 管理端	web-browser	Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/153.0.0.0 Safari/537.36	172.18.0.1	\N	2026-10-12 03:21:34	2026-11-11 02:51:34	2026-10-12 02:51:34	\N	2026-10-12 02:51:34.140746	2026-10-12 02:51:34.140746	1
+191	2	1	1	2	2	25ffef8371eebf147e9673b06625b6a8bd42bcc692750c1aa98ee3865fc800f8	2db9fb8519490daf1eefc3b896cc5e518a596aa665870241e3dc61a0b488b6bf	Web 管理端	web-browser	Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/153.0.0.0 Safari/537.36	172.18.0.1	\N	2026-10-12 08:34:26	2026-11-11 08:04:26	2026-10-12 08:04:26	\N	2026-10-12 08:04:26.102032	2026-10-12 08:04:26.102032	1
+192	2	1	1	2	2	ec018e324def2f7114c738dcbcf5cc74203d33b5aef6b262907e10b1fba09761	ac4d5fcc3e7be0427d13030c1b577ca48c39b1ddc69d3b231f7d73ec5c0f86a9	Web 管理端	web-browser	Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/153.0.0.0 Safari/537.36	172.18.0.1	\N	2026-10-12 09:37:52	2026-11-11 09:07:52	2026-10-12 09:07:52	\N	2026-10-12 09:07:52.459581	2026-10-12 09:07:52.459581	1
+193	2	1	1	2	2	0d2bed440327fea7c931277fee725e6eb28919c2b154939dda74b642a6e7d958	8a34c216d9595cf70cd2a717732576b54713d4489793f9c211ac0453722b14b2	Web 管理端	web-browser	Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/153.0.0.0 Safari/537.36	172.18.0.1	\N	2026-10-12 09:54:36	2026-11-11 09:24:36	2026-10-12 09:24:36	\N	2026-10-12 09:24:36.192781	2026-10-12 09:24:36.192781	1
 \.
 
 
@@ -58833,6 +58837,15 @@ COPY public.brew_audit_log (id, company_id, user_id, create_uid, write_uid, even
 337	1	2	2	2	authentication	\N	\N	login	req_5fb3772ffee84faf8c38c6b25b6b911d	172.18.0.1	Mozilla/5.0 (Windows NT; Windows NT 10.0; zh-CN) WindowsPowerShell/5.1.22621.5909	{"session_id": 187, "device_name": "Fix smoke"}	2026-10-11 14:06:57.375087	2026-10-11 14:06:57.375087
 338	1	2	2	2	authentication	\N	\N	login	req_939a01735123482c895e2e2699ffa4cf	172.18.0.1	Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/153.0.0.0 Safari/537.36	{"session_id": 188, "device_name": "Web 管理端"}	2026-10-11 14:13:29.167969	2026-10-11 14:13:29.167969
 339	1	2	2	2	authentication	\N	\N	login	req_368e4aab747e4c209029d9dcabf50077	172.18.0.1	Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/153.0.0.0 Safari/537.36	{"session_id": 189, "device_name": "Web 管理端"}	2026-10-11 14:26:14.029511	2026-10-11 14:26:14.029511
+340	1	2	2	2	authentication	\N	\N	login	req_c7a57ab195174221b0d4293e665a233c	172.18.0.1	Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/153.0.0.0 Safari/537.36	{"session_id": 190, "device_name": "Web 管理端"}	2026-10-12 02:51:34.140746	2026-10-12 02:51:34.140746
+341	1	2	2	2	purchase_requisition	\N	\N	aggregate	req_8858afb04817494fb3630bc692e89795	172.18.0.1	Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/153.0.0.0 Safari/537.36	{"ids": [25]}	2026-10-12 02:51:49.413811	2026-10-12 02:51:49.413811
+342	1	2	2	2	authentication	\N	\N	login	req_acea5a5e3b8f4fc3b0072e76990d3f8b	172.18.0.1	Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/153.0.0.0 Safari/537.36	{"session_id": 191, "device_name": "Web 管理端"}	2026-10-12 08:04:26.102032	2026-10-12 08:04:26.102032
+343	1	2	2	2	authentication	\N	\N	login	req_5c7a5e80cbe8485bb3202f1ae7cc554e	172.18.0.1	Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/153.0.0.0 Safari/537.36	{"session_id": 192, "device_name": "Web 管理端"}	2026-10-12 09:07:52.459581	2026-10-12 09:07:52.459581
+344	1	2	2	2	production_plan	\N	\N	check-inventory	req_2553c5dd51dd498997376da7ec590f7d	172.18.0.1	Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/153.0.0.0 Safari/537.36	{"plan_id": 1}	2026-10-12 09:09:33.919095	2026-10-12 09:09:33.919095
+345	1	2	2	2	production_plan	\N	\N	check-inventory	req_c56a4c8b62764acdb20346734cca49cf	172.18.0.1	Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/153.0.0.0 Safari/537.36	{"plan_id": 1}	2026-10-12 09:11:48.499603	2026-10-12 09:11:48.499603
+346	1	2	2	2	authentication	\N	\N	login	req_63f2645087084aa19c05e40b079a1412	172.18.0.1	Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/153.0.0.0 Safari/537.36	{"session_id": 193, "device_name": "Web 管理端"}	2026-10-12 09:24:36.192781	2026-10-12 09:24:36.192781
+347	1	2	2	2	production_plan	\N	\N	check-inventory	req_3479da82bb5249ec828ee773d45a41fe	172.18.0.1	Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/153.0.0.0 Safari/537.36	{"plan_id": 1}	2026-10-12 09:24:50.823019	2026-10-12 09:24:50.823019
+348	1	2	2	2	production_plan	\N	\N	check-inventory	req_db3e2c7b5de84e3cacaef2db1f3c5001	172.18.0.1	Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/153.0.0.0 Safari/537.36	{"plan_id": 1}	2026-10-12 09:25:09.306546	2026-10-12 09:25:09.306546
 \.
 
 
@@ -59075,6 +59088,11 @@ COPY public.brew_idempotency_record (id, company_id, user_id, response_status, c
 169	1	2	200	2	2	77cf46d9-6865-4485-8151-1898b98aef79	POST	/api/v1/receipts/3/confirm-arrival	f8f57663446e6b018efc08de709c8f9bac7e1e8086ec817b5053667f66c6c5e6	completed	{"id": "3", "name": "REC-261011-0003", "state": "pending_approval", "factory": {"id": "1", "name": "试运行厂区"}, "purchase_order": {"id": "3", "name": "P00003", "state": "purchase", "date_order": "2026-10-01T12:07:17", "amount_total": 1500.0, "currency": "USD"}, "supplier": {"id": "11", "name": "试运行原料供应商", "code": ""}, "purchaser": {"id": "2", "name": "Administrator"}, "shipment_id": null, "qc_location": {"id": "43", "name": "PILOT/待检库"}, "destination_location": {"id": "42", "name": "PILOT/包装物库"}, "picking_id": null, "approval_instance_id": "34", "approval_flow": [{"sequence": 10, "role_code": "production_director", "role_label": "生产总监", "state": "pending", "assignee": null, "acted_by": null, "acted_at": null, "comment": false}], "approval_history": [{"cycle": 1, "event": "submitted", "state": "submitted", "role_code": "requester", "role_label": "发起人", "actor": {"id": "2", "name": "Administrator", "role": {"code": "general_manager", "label": "总经理"}, "roles": [{"code": "general_manager", "label": "总经理"}, {"code": "production_director", "label": "生产总监"}, {"code": "tenant_admin", "label": "系统管理员"}]}, "acted_at": "2026-10-11T06:20:54.576316", "comment": false, "instance_state": "pending"}, {"cycle": 1, "event": "approval", "state": "pending", "role_code": "production_director", "role_label": "生产总监", "actor": null, "acted_at": null, "comment": false, "instance_state": "pending"}], "quality_inspection_id": null, "arrived_at": null, "completed_at": null, "create_date": "2026-10-11T05:51:08.542793", "creator": "Administrator", "write_date": "2026-10-11T06:20:54.576316", "note": "", "total_received": 30.0, "total_qualified": 0.0, "total_rejected": 0.0, "lines": [{"id": "3", "order_line_id": "3", "product": {"id": "16", "name": "[RM-MALT-PALE] 淡色基础麦芽", "brand": "Pilot Malt", "specification": "25kg/袋", "material_category": "malt"}, "received_qty": 30.0, "ordered_qty": 30.0, "price_unit": 50.0, "package_spec": "", "uom": {"id": "13", "name": "kg"}, "lot_name": "REC-261011-0003-01", "supplier_lot": "", "expiration_date": "2026-10-11", "lot_id": null, "qualified_qty": 0, "rejected_qty": 0, "note": ""}], "version": "2026-10-11T06:20:54.576316"}	2026-10-12 06:20:54	2026-10-11 06:20:54.576316	2026-10-11 06:20:54.576316
 170	1	2	200	2	2	153e7bb6-3309-47f0-aa68-f2be782f75a6	POST	/api/v1/approvals/27/return	d437d951a9ce6c78534f0191528f1c417be376c68e9a2db27a16180d3a5b523b	completed	{"id": "27", "instance_id": "34", "name": "purchase_overreceipt:REC-261011-0003", "approval_type": "purchase_overreceipt", "role_code": "production_director", "sequence": 10, "state": "returned", "instance_state": "returned", "comment": "1", "version": "2026-10-11T06:27:01.477559"}	2026-10-12 06:27:01	2026-10-11 06:27:01.477559	2026-10-11 06:27:01.477559
 171	1	2	200	2	2	643740f9-d2b0-48e5-bf78-67b75c484313	POST	/api/v1/receipts/3/confirm-arrival	0c21bc6980de83d033fd5ad56dd620680563b5ff271e2b726e89ad1de53b5d4e	completed	{"id": "3", "name": "REC-261011-0003", "state": "pending_approval", "factory": {"id": "1", "name": "试运行厂区"}, "purchase_order": {"id": "3", "name": "P00003", "state": "purchase", "date_order": "2026-10-01T12:07:17", "amount_total": 1500.0, "currency": "USD"}, "supplier": {"id": "11", "name": "试运行原料供应商", "code": ""}, "purchaser": {"id": "2", "name": "Administrator"}, "shipment_id": null, "qc_location": {"id": "43", "name": "PILOT/待检库"}, "destination_location": {"id": "42", "name": "PILOT/包装物库"}, "picking_id": null, "approval_instance_id": "35", "approval_flow": [{"sequence": 10, "role_code": "production_director", "role_label": "生产总监", "state": "pending", "assignee": null, "acted_by": null, "acted_at": null, "comment": false}], "approval_history": [{"cycle": 1, "event": "submitted", "state": "submitted", "role_code": "requester", "role_label": "发起人", "actor": {"id": "2", "name": "Administrator", "role": {"code": "general_manager", "label": "总经理"}, "roles": [{"code": "general_manager", "label": "总经理"}, {"code": "production_director", "label": "生产总监"}, {"code": "tenant_admin", "label": "系统管理员"}]}, "acted_at": "2026-10-11T06:20:54.576316", "comment": false, "instance_state": "returned"}, {"cycle": 1, "event": "approval", "state": "returned", "role_code": "production_director", "role_label": "生产总监", "actor": {"id": "2", "name": "Administrator", "role": {"code": "production_director", "label": "生产总监"}, "roles": [{"code": "general_manager", "label": "总经理"}, {"code": "production_director", "label": "生产总监"}, {"code": "tenant_admin", "label": "系统管理员"}]}, "acted_at": "2026-10-11T06:27:01", "comment": "1", "instance_state": "returned"}, {"cycle": 2, "event": "submitted", "state": "submitted", "role_code": "requester", "role_label": "发起人", "actor": {"id": "2", "name": "Administrator", "role": {"code": "general_manager", "label": "总经理"}, "roles": [{"code": "general_manager", "label": "总经理"}, {"code": "production_director", "label": "生产总监"}, {"code": "tenant_admin", "label": "系统管理员"}]}, "acted_at": "2026-10-11T08:00:35.770383", "comment": false, "instance_state": "pending"}, {"cycle": 2, "event": "approval", "state": "pending", "role_code": "production_director", "role_label": "生产总监", "actor": null, "acted_at": null, "comment": false, "instance_state": "pending"}], "quality_inspection_id": null, "arrived_at": null, "completed_at": null, "create_date": "2026-10-11T05:51:08.542793", "creator": "Administrator", "write_date": "2026-10-11T08:00:35.770383", "note": "", "return_reason": "", "total_received": 30.0, "total_qualified": 0.0, "total_rejected": 0.0, "lines": [{"id": "3", "order_line_id": "3", "product": {"id": "16", "name": "[RM-MALT-PALE] 淡色基础麦芽", "brand": "Pilot Malt", "specification": "25kg/袋", "material_category": "malt"}, "received_qty": 30.0, "ordered_qty": 30.0, "price_unit": 50.0, "package_spec": "", "uom": {"id": "13", "name": "kg"}, "lot_name": "REC-261011-0003-01", "supplier_lot": "", "expiration_date": "2026-10-11", "lot_id": null, "qualified_qty": 0, "rejected_qty": 0, "returned_qty": 0.0, "returnable_qty": 30.0, "note": ""}], "version": "2026-10-11T08:00:35.770383"}	2026-10-12 08:00:35	2026-10-11 08:00:35.770383	2026-10-11 08:00:35.770383
+173	1	2	201	2	2	93b57895-08d8-4912-a449-565680e9796d	POST	/api/v1/purchase-requisitions/aggregate	3f424b0f2f01bc9a4f1dd8a9a4d96c61acea3fabc0b70775c1e5ed85ed969791	completed	[{"id": "25", "name": "PR-261012-0022", "state": "draft", "request_type": "planned", "factory": {"id": "1", "name": "试运行厂区"}, "need_date": "2026-10-15", "reason": "生产计划缺料汇总", "emergency_reason": false, "preferred_supplier": null, "requester": {"id": "2", "name": "Administrator"}, "approval_instance_id": null, "return_reason": false, "approval_history": [], "orders": [], "lines": [{"id": "29", "product": {"id": "18", "name": "[RM-YEAST-ALE] 艾尔酵母"}, "requested_qty": 2.0, "approved_qty": 0.0, "ordered_qty": 0.0, "uom": {"id": "13", "name": "kg"}, "allocations": [{"plan_id": "1", "plan_name": "DEMO-PLAN-001", "required_qty": 2.0, "shortage_qty": 2.0}]}], "version": "2026-10-12T02:51:49.413811"}]	2026-10-13 02:51:49	2026-10-12 02:51:49.413811	2026-10-12 02:51:49.413811
+174	1	2	200	2	2	c241cd77-0970-425f-8021-e99fd9304821	POST	/api/v1/production-plans/1/check-inventory	44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a	completed	{"plan_id": "1", "ok": false, "reserved": false, "materials": [{"product": {"id": "16", "name": "[RM-MALT-PALE] 淡色基础麦芽"}, "required": 220.0, "allocated": 220.0, "shortage": 0, "uom": "kg", "allocations": [{"lot_id": "9", "lot_name": "LOT-MALT-202609", "location_id": "41", "location_name": "PILOT/原料库", "quantity": 220.0, "uom": "kg", "expiration_date": "2027-01-25"}]}, {"product": {"id": "17", "name": "[RM-HOP-CITRA] Citra 酒花"}, "required": 8.0, "allocated": 8.0, "shortage": 0, "uom": "kg", "allocations": [{"lot_id": "10", "lot_name": "LOT-HOP-202609", "location_id": "41", "location_name": "PILOT/原料库", "quantity": 8.0, "uom": "kg", "expiration_date": "2026-10-21"}]}, {"product": {"id": "18", "name": "[RM-YEAST-ALE] 艾尔酵母"}, "required": 2.0, "allocated": 0.0, "shortage": 2.0, "uom": "kg", "allocations": []}], "reservation_ids": []}	2026-10-13 09:09:33	2026-10-12 09:09:33.919095	2026-10-12 09:09:33.919095
+175	1	2	200	2	2	334693a6-ec92-49d8-a619-3428c144aaa3	POST	/api/v1/production-plans/1/check-inventory	44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a	completed	{"plan_id": "1", "ok": false, "reserved": false, "materials": [{"product": {"id": "16", "name": "[RM-MALT-PALE] 淡色基础麦芽"}, "required": 220.0, "allocated": 220.0, "shortage": 0, "uom": "kg", "allocations": [{"lot_id": "9", "lot_name": "LOT-MALT-202609", "location_id": "41", "location_name": "PILOT/原料库", "quantity": 220.0, "uom": "kg", "expiration_date": "2027-01-25"}]}, {"product": {"id": "17", "name": "[RM-HOP-CITRA] Citra 酒花"}, "required": 8.0, "allocated": 8.0, "shortage": 0, "uom": "kg", "allocations": [{"lot_id": "10", "lot_name": "LOT-HOP-202609", "location_id": "41", "location_name": "PILOT/原料库", "quantity": 8.0, "uom": "kg", "expiration_date": "2026-10-21"}]}, {"product": {"id": "18", "name": "[RM-YEAST-ALE] 艾尔酵母"}, "required": 2.0, "allocated": 0.0, "shortage": 2.0, "uom": "kg", "allocations": []}], "reservation_ids": []}	2026-10-13 09:11:48	2026-10-12 09:11:48.499603	2026-10-12 09:11:48.499603
+176	1	2	200	2	2	bd58366e-5c95-4e1a-aef6-07ca1dd1d0a9	POST	/api/v1/production-plans/1/check-inventory	44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a	completed	{"plan_id": "1", "ok": false, "reserved": false, "materials": [{"product": {"id": "16", "name": "[RM-MALT-PALE] 淡色基础麦芽"}, "required": 220.0, "allocated": 220.0, "shortage": 0, "uom": "kg", "allocations": [{"lot_id": "9", "lot_name": "LOT-MALT-202609", "location_id": "41", "location_name": "PILOT/原料库", "quantity": 220.0, "uom": "kg", "expiration_date": "2027-01-25"}]}, {"product": {"id": "17", "name": "[RM-HOP-CITRA] Citra 酒花"}, "required": 8.0, "allocated": 8.0, "shortage": 0, "uom": "kg", "allocations": [{"lot_id": "10", "lot_name": "LOT-HOP-202609", "location_id": "41", "location_name": "PILOT/原料库", "quantity": 8.0, "uom": "kg", "expiration_date": "2026-10-21"}]}, {"product": {"id": "18", "name": "[RM-YEAST-ALE] 艾尔酵母"}, "required": 2.0, "allocated": 0.0, "shortage": 2.0, "uom": "kg", "allocations": []}], "reservation_ids": []}	2026-10-13 09:24:50	2026-10-12 09:24:50.823019	2026-10-12 09:24:50.823019
+177	1	2	200	2	2	2da338bd-86c8-4a6a-84de-c12ff360eb69	POST	/api/v1/production-plans/1/check-inventory	44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a	completed	{"plan_id": "1", "ok": false, "reserved": false, "materials": [{"product": {"id": "16", "name": "[RM-MALT-PALE] 淡色基础麦芽"}, "required": 220.0, "allocated": 220.0, "shortage": 0, "uom": "kg", "allocations": [{"lot_id": "9", "lot_name": "LOT-MALT-202609", "location_id": "41", "location_name": "PILOT/原料库", "quantity": 220.0, "uom": "kg", "expiration_date": "2027-01-25"}]}, {"product": {"id": "17", "name": "[RM-HOP-CITRA] Citra 酒花"}, "required": 8.0, "allocated": 8.0, "shortage": 0, "uom": "kg", "allocations": [{"lot_id": "10", "lot_name": "LOT-HOP-202609", "location_id": "41", "location_name": "PILOT/原料库", "quantity": 8.0, "uom": "kg", "expiration_date": "2026-10-21"}]}, {"product": {"id": "18", "name": "[RM-YEAST-ALE] 艾尔酵母"}, "required": 2.0, "allocated": 0.0, "shortage": 2.0, "uom": "kg", "allocations": []}], "reservation_ids": []}	2026-10-13 09:25:09	2026-10-12 09:25:09.306546	2026-10-12 09:25:09.306546
 \.
 
 
@@ -59423,6 +59441,7 @@ COPY public.brew_purchase_requisition (id, company_id, factory_id, requester_id,
 16	1	1	2	23	2	2	PR-261009-0014	approved	2026-10-09		\N	2026-10-09 04:47:05.722336	2026-10-09 04:48:53.534815	emergency	紧急采购	\N
 24	1	1	2	31	2	2	PR-261009-0021	approved	2026-10-09		\N	2026-10-09 11:06:48.095625	2026-10-09 11:31:53.856382	emergency	123	11
 8	1	1	2	15	2	2	PR-261001-0007	approved	2026-10-01		\N	2026-10-01 12:03:01.765598	2026-10-09 11:32:58.90998	emergency	采购麦芽	\N
+25	1	1	2	\N	2	2	PR-261012-0022	draft	2026-10-15	生产计划缺料汇总	\N	2026-10-12 02:51:49.413811	2026-10-12 02:51:49.413811	planned	\N	\N
 \.
 
 
@@ -59431,6 +59450,7 @@ COPY public.brew_purchase_requisition (id, company_id, factory_id, requester_id,
 --
 
 COPY public.brew_purchase_requisition_allocation (id, requisition_line_id, company_id, production_plan_id, uom_id, create_uid, write_uid, create_date, write_date, required_qty, shortage_qty) FROM stdin;
+1	29	1	1	13	2	2	2026-10-12 02:51:49.413811	2026-10-12 02:51:49.413811	2	2
 \.
 
 
@@ -59439,6 +59459,7 @@ COPY public.brew_purchase_requisition_allocation (id, requisition_line_id, compa
 --
 
 COPY public.brew_purchase_requisition_line (id, requisition_id, company_id, product_id, uom_id, create_uid, write_uid, need_date, create_date, write_date, requested_qty, approved_qty, ordered_qty) FROM stdin;
+29	25	1	18	13	2	2	2026-10-15	2026-10-12 02:51:49.413811	2026-10-12 02:51:49.413811	2	0	0
 2	2	1	17	13	2	2	2026-09-30	2026-09-30 12:47:59.786491	2026-09-30 14:31:35.808071	1	1	1
 9	9	1	18	13	2	2	2026-10-01	2026-10-01 12:03:46.538516	2026-10-01 12:03:46.538516	5	0	0
 1	1	1	18	13	2	2	2026-09-30	2026-09-30 12:07:49.352084	2026-10-01 12:04:32.432215	15	15	15
@@ -61007,29 +61028,29 @@ COPY public.ir_config_parameter (id, create_uid, write_uid, key, value, create_d
 --
 
 COPY public.ir_cron (id, ir_actions_server_id, user_id, interval_number, numbercall, priority, create_uid, write_uid, cron_name, interval_type, active, doall, nextcall, lastcall, create_date, write_date) FROM stdin;
+15	217	1	1	-1	5	1	1	Digest Emails	days	t	\N	2026-10-13 08:40:21	2026-10-12 08:40:23	2026-09-17 06:40:20.898438	2026-09-17 06:40:20.898438
 21	431	1	15	0	5	1	1	释放过期库存预占	minutes	f	\N	2026-09-17 07:00:26	2026-09-17 06:47:35	2026-09-17 06:45:26.120052	2026-09-17 06:45:26.120052
 22	435	1	1	0	5	1	1	检测发酵异常	hours	f	\N	2026-09-17 07:45:29	2026-09-17 06:47:35	2026-09-17 06:45:28.413126	2026-09-17 06:45:28.413126
+1	34	1	1	-1	3	1	1	Base: Auto-vacuum internal data	days	t	\N	2026-10-13 06:40:05	2026-10-12 08:05:20	2026-09-17 06:39:59.151281	2026-10-09 10:10:59.285446
+19	302	1	1	-1	5	1	1	Procurement: run scheduler	days	t	f	2026-10-13 06:40:33	2026-10-12 08:05:21	2026-09-17 06:40:30.720062	2026-09-17 06:40:30.720062
 7	130	1	5	-1	5	1	1	Mail: Fetchmail Service	minutes	f	f	2026-09-17 06:40:12	\N	2026-09-17 06:40:10.688896	2026-09-17 06:40:10.688896
-19	302	1	1	-1	5	1	1	Procurement: run scheduler	days	t	f	2026-10-12 06:40:33	2026-10-11 06:41:11	2026-09-17 06:40:30.720062	2026-09-17 06:40:30.720062
-20	391	1	1	-1	5	1	1	Purchase reminder	days	t	t	2026-10-12 06:40:37	2026-10-11 06:41:11	2026-09-17 06:40:36.538219	2026-09-17 06:40:36.538219
-23	440	1	1	-1	5	1	1	Craft Brew: process export jobs	minutes	t	\N	2026-10-11 14:37:47	2026-10-11 14:36:55	2026-09-17 06:45:29.782098	2026-09-17 06:45:29.782098
+20	391	1	1	-1	5	1	1	Purchase reminder	days	t	t	2026-10-13 06:40:37	2026-10-12 08:05:21	2026-09-17 06:40:36.538219	2026-09-17 06:40:36.538219
+23	440	1	1	-1	5	1	1	Craft Brew: process export jobs	minutes	t	\N	2026-10-13 01:17:47	2026-10-13 01:17:29	2026-09-17 06:45:29.782098	2026-09-17 06:45:29.782098
 5	128	1	1	-1	1000	1	1	Publisher: Update Notification	weeks	t	f	2026-10-15 06:40:12	2026-10-08 06:40:15	2026-09-17 06:40:10.688896	2026-09-17 06:40:10.688896
 16	220	1	10	-1	5	1	1	payment: post-process transactions	minutes	f	\N	2026-09-17 06:40:23	\N	2026-09-17 06:40:21.324151	2026-09-17 06:40:21.324151
-13	203	1	1	-1	5	1	1	SMS: SMS Queue Manager	hours	t	f	2026-10-11 14:40:20	2026-10-11 13:40:23	2026-09-17 06:40:19.155712	2026-09-17 06:40:19.155712
+2	35	1	1	-1	5	1	1	Base: Portal Users Deletion	days	t	\N	2026-10-13 06:40:05	2026-10-12 08:05:21	2026-09-17 06:39:59.151281	2026-10-09 10:10:59.285446
+9	132	1	1	-1	5	1	1	Mail: send web push notification	days	t	t	2026-10-13 06:40:12	2026-10-12 08:05:21	2026-09-17 06:40:10.688896	2026-09-17 06:40:10.688896
+18	297	1	1	-1	5	1	1	Send invoices automatically	days	t	\N	2026-10-13 06:40:29	2026-10-12 08:05:21	2026-09-17 06:40:24.625829	2026-09-17 06:40:24.625829
+11	149	1	1	-1	5	1	1	Users: Notify About Unregistered Users	days	t	\N	2026-10-13 06:40:14	2026-10-12 08:05:21	2026-09-17 06:40:14.592156	2026-09-17 06:40:14.592156
+10	133	1	1	-1	5	1	1	Discuss: channel member unmute	days	t	f	2026-10-13 06:40:12	2026-10-12 08:05:21	2026-09-17 06:40:10.688896	2026-09-17 06:40:10.688896
 3	77	1	1	0	5	1	1	Craft Brew: dispatch outbox events	minutes	f	\N	2026-09-17 06:48:08	2026-09-17 06:47:35	2026-09-17 06:40:06.497028	2026-09-17 06:40:06.497028
-14	213	1	1	-1	5	1	1	Snailmail: process letters queue	hours	t	f	2026-10-11 14:40:20	2026-10-11 13:40:23	2026-09-17 06:40:20.357336	2026-09-17 06:40:20.357336
-4	127	1	1	-1	5	1	1	Mail: Email Queue Manager	hours	t	f	2026-10-11 14:40:12	2026-10-11 13:40:23	2026-09-17 06:40:10.688896	2026-09-17 06:40:10.688896
-12	199	1	60	-1	5	1	1	Partner Autocomplete: Sync with remote DB	minutes	t	f	2026-10-11 14:40:18	2026-10-11 13:40:23	2026-09-17 06:40:18.537345	2026-09-17 06:40:18.537345
-8	131	1	1	-1	5	1	1	Notification: Send scheduled message notifications	hours	t	f	2026-10-11 14:40:12	2026-10-11 13:40:23	2026-09-17 06:40:10.688896	2026-09-17 06:40:10.688896
-2	35	1	1	-1	5	1	1	Base: Portal Users Deletion	days	t	\N	2026-10-12 06:40:05	2026-10-11 06:40:11	2026-09-17 06:39:59.151281	2026-10-09 10:10:59.285446
-1	34	1	1	-1	3	1	1	Base: Auto-vacuum internal data	days	t	\N	2026-10-12 06:40:05	2026-10-11 13:14:36	2026-09-17 06:39:59.151281	2026-10-09 10:10:59.285446
-9	132	1	1	-1	5	1	1	Mail: send web push notification	days	t	t	2026-10-12 06:40:12	2026-10-11 06:40:32	2026-09-17 06:40:10.688896	2026-09-17 06:40:10.688896
-18	297	1	1	-1	5	1	1	Send invoices automatically	days	t	\N	2026-10-12 06:40:29	2026-10-11 06:40:32	2026-09-17 06:40:24.625829	2026-09-17 06:40:24.625829
-11	149	1	1	-1	5	1	1	Users: Notify About Unregistered Users	days	t	\N	2026-10-12 06:40:14	2026-10-11 06:40:32	2026-09-17 06:40:14.592156	2026-09-17 06:40:14.592156
-10	133	1	1	-1	5	1	1	Discuss: channel member unmute	days	t	f	2026-10-12 06:40:12	2026-10-11 06:40:32	2026-09-17 06:40:10.688896	2026-09-17 06:40:10.688896
-15	217	1	1	-1	5	1	1	Digest Emails	days	t	\N	2026-10-12 08:40:21	2026-10-11 08:40:24	2026-09-17 06:40:20.898438	2026-09-17 06:40:20.898438
-17	296	1	1	-1	5	1	1	Account: Post draft entries with auto_post enabled and accounting date up to today	days	t	f	2026-10-12 02:00:29	2026-10-11 03:50:05	2026-09-17 06:40:24.625829	2026-09-17 06:40:24.625829
-6	129	1	1	-1	5	1	1	Notification: Delete Notifications older than 6 Month	days	t	f	2026-10-12 06:40:12	2026-10-11 06:40:32	2026-09-17 06:40:10.688896	2026-09-17 06:40:10.688896
+6	129	1	1	-1	5	1	1	Notification: Delete Notifications older than 6 Month	days	t	f	2026-10-13 06:40:12	2026-10-12 08:05:21	2026-09-17 06:40:10.688896	2026-09-17 06:40:10.688896
+17	296	1	1	-1	5	1	1	Account: Post draft entries with auto_post enabled and accounting date up to today	days	t	f	2026-10-13 02:00:29	2026-10-12 02:52:19	2026-09-17 06:40:24.625829	2026-09-17 06:40:24.625829
+4	127	1	1	-1	5	1	1	Mail: Email Queue Manager	hours	t	f	2026-10-13 01:40:12	2026-10-13 01:05:16	2026-09-17 06:40:10.688896	2026-09-17 06:40:10.688896
+8	131	1	1	-1	5	1	1	Notification: Send scheduled message notifications	hours	t	f	2026-10-13 01:40:12	2026-10-13 01:05:16	2026-09-17 06:40:10.688896	2026-09-17 06:40:10.688896
+13	203	1	1	-1	5	1	1	SMS: SMS Queue Manager	hours	t	f	2026-10-13 01:40:20	2026-10-13 01:05:16	2026-09-17 06:40:19.155712	2026-09-17 06:40:19.155712
+14	213	1	1	-1	5	1	1	Snailmail: process letters queue	hours	t	f	2026-10-13 01:40:20	2026-10-13 01:05:16	2026-09-17 06:40:20.357336	2026-09-17 06:40:20.357336
+12	199	1	60	-1	5	1	1	Partner Autocomplete: Sync with remote DB	minutes	t	f	2026-10-13 01:40:18	2026-10-13 01:05:16	2026-09-17 06:40:18.537345	2026-09-17 06:40:18.537345
 \.
 
 
@@ -101763,21 +101784,9 @@ COPY public.res_users_identitycheck (id, create_uid, write_uid, request, passwor
 --
 
 COPY public.res_users_log (id, create_uid, write_uid, create_date, write_date) FROM stdin;
-174	2	2	2026-10-11 12:46:01.000145	2026-10-11 12:46:01.000145
-175	2	2	2026-10-11 13:14:41.550906	2026-10-11 13:14:41.550906
-176	2	2	2026-10-11 13:16:33.730329	2026-10-11 13:16:33.730329
-177	2	2	2026-10-11 13:16:58.017618	2026-10-11 13:16:58.017618
-178	2	2	2026-10-11 13:19:56.18177	2026-10-11 13:19:56.18177
-179	2	2	2026-10-11 13:20:00.747341	2026-10-11 13:20:00.747341
-180	2	2	2026-10-11 13:23:58.138556	2026-10-11 13:23:58.138556
-181	2	2	2026-10-11 13:30:40.786632	2026-10-11 13:30:40.786632
-182	2	2	2026-10-11 13:33:10.558943	2026-10-11 13:33:10.558943
-183	2	2	2026-10-11 13:37:47.494806	2026-10-11 13:37:47.494806
-184	2	2	2026-10-11 13:43:25.135508	2026-10-11 13:43:25.135508
-185	2	2	2026-10-11 14:01:43.886848	2026-10-11 14:01:43.886848
-186	2	2	2026-10-11 14:06:56.581916	2026-10-11 14:06:56.581916
-187	2	2	2026-10-11 14:13:28.210176	2026-10-11 14:13:28.210176
-188	2	2	2026-10-11 14:26:13.718068	2026-10-11 14:26:13.718068
+190	2	2	2026-10-12 08:04:25.673709	2026-10-12 08:04:25.673709
+191	2	2	2026-10-12 09:07:51.910385	2026-10-12 09:07:51.910385
+192	2	2	2026-10-12 09:24:35.849128	2026-10-12 09:24:35.849128
 49	8	8	2026-09-29 01:46:17.955139	2026-09-29 01:46:17.955139
 \.
 
@@ -103357,7 +103366,7 @@ SELECT pg_catalog.setval('public.base_registry_signaling', 1, true);
 -- Name: brew_api_session_id_seq; Type: SEQUENCE SET; Schema: public; Owner: -
 --
 
-SELECT pg_catalog.setval('public.brew_api_session_id_seq', 189, true);
+SELECT pg_catalog.setval('public.brew_api_session_id_seq', 193, true);
 
 
 --
@@ -103378,7 +103387,7 @@ SELECT pg_catalog.setval('public.brew_approval_step_id_seq', 33, true);
 -- Name: brew_audit_log_id_seq; Type: SEQUENCE SET; Schema: public; Owner: -
 --
 
-SELECT pg_catalog.setval('public.brew_audit_log_id_seq', 339, true);
+SELECT pg_catalog.setval('public.brew_audit_log_id_seq', 348, true);
 
 
 --
@@ -103462,7 +103471,7 @@ SELECT pg_catalog.setval('public.brew_fermentation_session_id_seq', 1, false);
 -- Name: brew_idempotency_record_id_seq; Type: SEQUENCE SET; Schema: public; Owner: -
 --
 
-SELECT pg_catalog.setval('public.brew_idempotency_record_id_seq', 172, true);
+SELECT pg_catalog.setval('public.brew_idempotency_record_id_seq', 177, true);
 
 
 --
@@ -103665,21 +103674,21 @@ SELECT pg_catalog.setval('public.brew_production_record_id_seq', 1, false);
 -- Name: brew_purchase_requisition_allocation_id_seq; Type: SEQUENCE SET; Schema: public; Owner: -
 --
 
-SELECT pg_catalog.setval('public.brew_purchase_requisition_allocation_id_seq', 1, false);
+SELECT pg_catalog.setval('public.brew_purchase_requisition_allocation_id_seq', 1, true);
 
 
 --
 -- Name: brew_purchase_requisition_id_seq; Type: SEQUENCE SET; Schema: public; Owner: -
 --
 
-SELECT pg_catalog.setval('public.brew_purchase_requisition_id_seq', 24, true);
+SELECT pg_catalog.setval('public.brew_purchase_requisition_id_seq', 25, true);
 
 
 --
 -- Name: brew_purchase_requisition_line_id_seq; Type: SEQUENCE SET; Schema: public; Owner: -
 --
 
-SELECT pg_catalog.setval('public.brew_purchase_requisition_line_id_seq', 28, true);
+SELECT pg_catalog.setval('public.brew_purchase_requisition_line_id_seq', 29, true);
 
 
 --
@@ -104281,7 +104290,7 @@ SELECT pg_catalog.setval('public.ir_sequence_017', 1, false);
 -- Name: ir_sequence_018; Type: SEQUENCE SET; Schema: public; Owner: -
 --
 
-SELECT pg_catalog.setval('public.ir_sequence_018', 21, true);
+SELECT pg_catalog.setval('public.ir_sequence_018', 22, true);
 
 
 --
@@ -105226,7 +105235,7 @@ SELECT pg_catalog.setval('public.res_users_identitycheck_id_seq', 1, false);
 -- Name: res_users_log_id_seq; Type: SEQUENCE SET; Schema: public; Owner: -
 --
 
-SELECT pg_catalog.setval('public.res_users_log_id_seq', 188, true);
+SELECT pg_catalog.setval('public.res_users_log_id_seq', 192, true);
 
 
 --
@@ -132618,5 +132627,5 @@ ALTER TABLE ONLY public.wizard_ir_model_menu_create
 -- PostgreSQL database dump complete
 --
 
-\unrestrict QeGdQREIIhWJHln6TzYq83tXiRcfVflxCvIwZv4r3MkaRI7xN9Fbc0WCPt9lBvg
+\unrestrict D6cHuXhICCz96hAQvsn05E0xoCp47RhS3e3fKl9rxJRldNpSS6FTWGsT0qhhjK3
 

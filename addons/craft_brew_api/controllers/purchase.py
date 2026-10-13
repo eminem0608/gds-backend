@@ -46,7 +46,6 @@ class PurchaseController(BrewApiController):
                         key: request.httprequest.args.get(key)
                         for key in (
                             "keyword",
-                            "supplier_name",
                             "requester_name",
                             "factory_id",
                             "request_type",
@@ -76,8 +75,8 @@ class PurchaseController(BrewApiController):
             filters = {
                 key: request.httprequest.args.get(key)
                 for key in (
-                    "category_group", "category_code", "material_id", "material_name",
-                    "plan_no", "product_name", "date_from", "date_to"
+                    "category_group", "category_code",
+                    "plan_no", "date_from", "date_to"
                 )
                 if request.httprequest.args.get(key)
             }

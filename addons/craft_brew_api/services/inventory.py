@@ -472,6 +472,10 @@ class InventoryService:
     def lot_detail(self, lot_id):
         lot = self._lot(lot_id)
         data = self._serialize_lot(lot)
+        if lot.brew_source_model == "brew.receipt" and lot.brew_source_id:
+            receipt = self.env["brew.receipt"].sudo().browse(lot.brew_source_id).exists()
+            if receipt:
+                data["source_receipt"] = {"id": str(receipt.id), "name": receipt.name}
         moves = self.env["stock.move.line"].sudo().search(
             [("lot_id", "=", lot.id), ("state", "=", "done")],
             order="date desc, id desc",

@@ -239,10 +239,6 @@ class PurchaseService:
                     ("line_ids.product_id", "ilike", filters["keyword"]),
                 ]
             )
-        if filters.get("supplier_name"):
-            domain.append(
-                ("preferred_supplier_id.name", "ilike", filters["supplier_name"])
-            )
         if filters.get("requester_name"):
             domain.append(("requester_id.name", "ilike", filters["requester_name"]))
         if filters.get("factory_id"):
@@ -279,6 +275,36 @@ class PurchaseService:
             committed[key] = committed.get(key, 0.0) + allocation.shortage_qty
         return committed
 
+    def _linked_shortage_requisitions(self, plan_ids):
+        allocations = self.env["brew.purchase.requisition.allocation"].sudo().search(
+            [
+                ("company_id", "=", self.company.id),
+                ("production_plan_id", "in", plan_ids),
+            ],
+            order="id desc",
+        )
+        linked = {}
+        for allocation in allocations:
+            line = allocation.requisition_line_id
+            requisition = line.requisition_id
+            key = (allocation.production_plan_id.id, line.product_id.id)
+            existing = next(
+                (item for item in linked.setdefault(key, []) if item["id"] == str(requisition.id)),
+                None,
+            )
+            if existing:
+                existing["quantity"] += allocation.shortage_qty
+            else:
+                linked[key].append(
+                    {
+                        "id": str(requisition.id),
+                        "name": requisition.name,
+                        "state": requisition.state,
+                        "quantity": allocation.shortage_qty,
+                    }
+                )
+        return linked
+
     def requisition_source_plans(self, filters=None):
         self._require_purchase()
         filters = filters or {}
@@ -291,10 +317,10 @@ class PurchaseService:
         ]
         if filters.get("plan_no"):
             domain.append(("name", "ilike", filters["plan_no"]))
-        if filters.get("product_name"):
-            domain.append(("product_tmpl_id.name", "ilike", filters["product_name"]))
+        # A plan belongs in the result whenever its production window overlaps
+        # the selected window, including plans that start before the filter.
         if filters.get("date_from"):
-            domain.append(("planned_start", ">=", f"{filters['date_from']} 00:00:00"))
+            domain.append(("planned_end", ">=", f"{filters['date_from']} 00:00:00"))
         if filters.get("date_to"):
             domain.append(("planned_start", "<=", f"{filters['date_to']} 23:59:59"))
         plans = self.env["brew.production.plan"].sudo().search(
@@ -304,6 +330,7 @@ class PurchaseService:
         )
         inventory = InventoryService(self.env, self.user, self.company)
         committed = self._committed_shortages(plans.ids)
+        linked_requisitions = self._linked_shortage_requisitions(plans.ids)
         category_codes = set()
         raw_results = []
         for plan in plans:
@@ -332,10 +359,6 @@ class PurchaseService:
                     continue
                 if filters.get("category_code") and template.brew_material_category != filters["category_code"]:
                     continue
-                if filters.get("material_id") and product.id != int(filters["material_id"]):
-                    continue
-                if filters.get("material_name") and filters["material_name"].casefold() not in product.display_name.casefold():
-                    continue
                 requested_qty = committed.get((plan.id, product.id), 0.0)
                 requestable_qty = max(item["shortage"] - requested_qty, 0.0)
                 request_status = (
@@ -361,6 +384,9 @@ class PurchaseService:
                             "group_name": dict(template._brew_material_category_selection()).get(category_group, category_group),
                         },
                         "requested_qty": requested_qty,
+                        "linked_requisitions": linked_requisitions.get(
+                            (plan.id, product.id), []
+                        ),
                         "requestable_qty": requestable_qty,
                         "request_status": request_status,
                         "request_key": f"{plan.id}:{product.id}",
@@ -867,6 +893,39 @@ class PurchaseService:
             "requisitions": [
                 {"id": str(item.id), "name": item.name}
                 for item in record.brew_requisition_ids
+            ],
+            "receipts": [
+                {
+                    "id": str(receipt.id),
+                    "name": receipt.name,
+                    "state": receipt.state,
+                    "completed_at": (
+                        receipt.completed_at.isoformat() if receipt.completed_at else None
+                    ),
+                    "inspection_id": str(receipt.quality_inspection_id.id)
+                    if receipt.quality_inspection_id
+                    else None,
+                    "inspection_name": receipt.quality_inspection_id.name
+                    if receipt.quality_inspection_id
+                    else "",
+                    "inspection_state": receipt.quality_inspection_id.state
+                    if receipt.quality_inspection_id
+                    else None,
+                }
+                for receipt in record.brew_receipt_ids
+            ],
+            "returns": [
+                {
+                    "id": str(return_record.id),
+                    "name": return_record.name,
+                    "state": return_record.state,
+                    "receipt_id": str(return_record.receipt_id.id)
+                    if return_record.receipt_id
+                    else None,
+                }
+                for return_record in self.env["brew.purchase.return"].sudo().search(
+                    [("purchase_order_id", "=", record.id)], order="create_date,id"
+                )
             ],
             "approval_instance_id": (
                 str(record.brew_approval_instance_id.id)
