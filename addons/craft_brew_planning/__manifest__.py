@@ -1,7 +1,7 @@
 {
     "name": "Craft Brew Planning",
     "summary": "Production plans, resource checks, recipe snapshots and dispatch.",
-    "version": "17.0.1.0.0",
+    "version": "17.0.1.1.0",
     "category": "Manufacturing",
     "author": "Craft Brew",
     "license": "LGPL-3",

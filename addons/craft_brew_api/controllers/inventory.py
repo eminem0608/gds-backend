@@ -32,6 +32,21 @@ class InventoryController(BrewApiController):
             request_id=request_id,
         )
 
+    @http.route("/api/v1/inventory/opening-stock", type="http", auth="public", methods=["POST"], csrf=False)
+    def opening_stock(self):
+        request_id = self._request_id()
+        try:
+            payload = self._json_body()
+            user, company, service = self._inventory_context(True)
+            idem, replay = self._start_idempotency(user, company, payload)
+            if replay:
+                return replay
+            data = service.create_opening_stock(payload)
+            self._audit("inventory_opening_stock", "create", request_id, user, company, data)
+            return self._complete_idempotency(idem, data, 201)
+        except Exception as exc:
+            return self._error_response(exc, request_id)
+
     @http.route("/api/v1/inventory/summary", type="http", auth="public", methods=["GET"], csrf=False)
     def summary(self):
         request_id = self._request_id()
@@ -143,7 +158,8 @@ class InventoryController(BrewApiController):
             if not mutation:
                 page, size = self._inventory_paging()
                 data, total = service.transfers(
-                    page, size, request.httprequest.args.get("state")
+                    page, size, request.httprequest.args.get("state"),
+                    {key: request.httprequest.args.get(key) for key in ["factory_id", "keyword"]}
                 )
                 return self._response(
                     data,
@@ -189,7 +205,8 @@ class InventoryController(BrewApiController):
             if not mutation:
                 page, size = self._inventory_paging()
                 data, total = service.counts(
-                    page, size, request.httprequest.args.get("state")
+                    page, size, request.httprequest.args.get("state"),
+                    {key: request.httprequest.args.get(key) for key in ["keyword", "factory_id", "compact"]},
                 )
                 return self._response(
                     data,
@@ -206,7 +223,27 @@ class InventoryController(BrewApiController):
         except Exception as exc:
             return self._error_response(exc, request_id)
 
-    @http.route("/api/v1/inventory/counts/<int:document_id>/lines", type="http", auth="public", methods=["PUT"], csrf=False)
+    @http.route("/api/v1/inventory/counts/<int:document_id>", type="http", auth="public", methods=["GET"], csrf=False)
+    def count_detail(self, document_id):
+        request_id = self._request_id()
+        try:
+            _user, _company, service = self._inventory_context()
+            record = service._document("brew.inventory.count", document_id)
+            return self._response(service._serialize_count(record), request_id=request_id)
+        except Exception as exc:
+            return self._error_response(exc, request_id)
+
+    @http.route("/api/v1/inventory/counts/options", type="http", auth="public", methods=["GET"], csrf=False)
+    def count_options(self):
+        request_id = self._request_id()
+        try:
+            _user, _company, service = self._inventory_context()
+            data = service.count_options(request.httprequest.args)
+            return self._response(data, request_id=request_id)
+        except Exception as exc:
+            return self._error_response(exc, request_id)
+
+    @http.route("/api/v1/inventory/counts/<int:document_id>/lines", type="http", auth="public", methods=["PUT", "POST"], csrf=False)
     def count_lines(self, document_id):
         request_id = self._request_id()
         try:
@@ -215,8 +252,12 @@ class InventoryController(BrewApiController):
             idem, replay = self._start_idempotency(user, company, payload)
             if replay:
                 return replay
-            record, data = service.update_count_lines(document_id, payload)
-            self._audit("inventory_count", "update_lines", request_id, user, company, {"id": record.id})
+            if request.httprequest.method == "POST":
+                record, data = service.add_count_line(document_id, payload)
+            else:
+                record, data = service.update_count_lines(document_id, payload)
+            action = "submit" if payload.get("submit_after_save") else "update_lines"
+            self._audit("inventory_count", action, request_id, user, company, {"id": record.id})
             return self._complete_idempotency(idem, data)
         except Exception as exc:
             return self._error_response(exc, request_id)
@@ -225,7 +266,7 @@ class InventoryController(BrewApiController):
     def count_action(self, document_id, action):
         request_id = self._request_id()
         try:
-            if action not in {"start", "submit", "confirm"}:
+            if action not in {"start", "submit", "confirm", "cancel"}:
                 raise ApiError("RESOURCE_NOT_FOUND", "盘点动作不存在。", 404)
             payload = self._json_body()
             user, company, service = self._inventory_context(True)

@@ -76,7 +76,7 @@ class PurchaseController(BrewApiController):
                 key: request.httprequest.args.get(key)
                 for key in (
                     "category_group", "category_code",
-                    "plan_no", "date_from", "date_to"
+                    "plan_no", "factory_id", "date_from", "date_to"
                 )
                 if request.httprequest.args.get(key)
             }
@@ -100,7 +100,7 @@ class PurchaseController(BrewApiController):
             if replay:
                 return replay
             record, data = service.update_requisition(record_id, payload)
-            self._audit("purchase_requisition", "update", request_id, user, company, {"id": record.id})
+            self._audit("purchase_requisition", "submit" if payload.get("submit_after_save") is True else "update", request_id, user, company, {"id": record.id})
             return self._complete_idempotency(idem, data)
         except Exception as exc:
             return self._error_response(exc, request_id)
@@ -193,7 +193,7 @@ class PurchaseController(BrewApiController):
             if replay:
                 return replay
             order, data = service.update_order(order_id, payload)
-            self._audit("purchase_order", "update", request_id, user, company, {"id": order.id})
+            self._audit("purchase_order", "submit" if payload.get("submit_after_save") is True else "update", request_id, user, company, {"id": order.id})
             return self._complete_idempotency(idem, data)
         except Exception as exc:
             return self._error_response(exc, request_id)

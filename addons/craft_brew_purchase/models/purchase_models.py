@@ -203,6 +203,9 @@ class BrewPurchaseRequisitionAllocation(models.Model):
         "brew.production.plan", required=True, check_company=True, index=True
     )
     required_qty = fields.Float(required=True)
+    source_shortage_qty = fields.Float(
+        string="申请时原料缺口", help="生成采购需求时该生产计划的完整缺口快照。"
+    )
     shortage_qty = fields.Float(required=True)
     uom_id = fields.Many2one("uom.uom", required=True)
 
@@ -247,6 +250,14 @@ class PurchaseOrder(models.Model):
         "brew.supplier.shipment", "purchase_order_id"
     )
     brew_receipt_ids = fields.One2many("brew.receipt", "purchase_order_id")
+
+    @api.model_create_multi
+    def create(self, values_list):
+        cny = self.env.ref("base.CNY")
+        for values in values_list:
+            if values.get("brew_factory_id"):
+                values["currency_id"] = cny.id
+        return super().create(values_list)
 
     def _create_picking(self):
         if self.env.context.get("brew_skip_standard_picking"):
@@ -327,13 +338,20 @@ class PurchaseOrder(models.Model):
 
     def action_brew_place(self):
         self.ensure_one()
-        if self.brew_approval_state != "approved" or self.state not in {"draft", "sent"}:
-            raise ValidationError("只有已批准的询价单可以正式下单。")
+        if self.state not in {"draft", "sent"}:
+            raise ValidationError("只有未下单的采购单可以正式下单。")
+        if not self.brew_factory_id or not self.order_line:
+            raise ValidationError("采购订单必须填写厂区和明细。")
+        pending = self.env["brew.approval.instance"].sudo().search([
+            ("target_model", "=", "purchase.order"),
+            ("target_id", "=", self.id), ("state", "=", "pending"),
+        ])
+        pending.write({"state": "cancelled", "completed_at": fields.Datetime.now()})
         self.with_context(brew_skip_standard_picking=True).button_confirm()
         if self.state == "to approve":
             self.button_approve()
         self.write({"brew_placed_at": fields.Datetime.now()})
-        self.brew_requisition_ids.write({"state": "ordered"})
+        self.brew_requisition_ids.sudo().write({"state": "ordered"})
         return True
 
     def action_brew_close(self, reason=None):
@@ -607,7 +625,7 @@ class BrewReceipt(models.Model):
                 )
                 self.write({"approval_instance_id": approval.id, "return_reason": ""})
                 return False
-            self.write({"return_reason": ""})
+            self.write({"return_reason": "", "state": "draft", "approval_instance_id": False})
         if (
             self.state == "pending_approval"
             and self.approval_instance_id.state != "approved"
@@ -726,7 +744,10 @@ class BrewReceipt(models.Model):
                     quantity=result.qualified_qty,
                     uom=result.uom_id,
                     source_location=self.qc_location_id,
-                    destination_location=self.destination_location_id,
+                    destination_location=(
+                        result.receipt_line_id.destination_location_id
+                        or self.destination_location_id
+                    ),
                     lot=result.lot_id,
                     source_model=self._name,
                     source_id=self.id,
@@ -802,6 +823,7 @@ class BrewReceiptLine(models.Model):
     purchase_order_line_id = fields.Many2one(
         "purchase.order.line", required=True, check_company=True
     )
+    destination_location_id = fields.Many2one("stock.location", check_company=True)
     product_id = fields.Many2one(
         "product.product", related="purchase_order_line_id.product_id", store=True
     )
@@ -891,44 +913,37 @@ class BrewQualityInspection(models.Model):
                 raise ValidationError("不合格数量必须选择处置方式。")
         return True
 
-    def action_submit(self, user, submission_comment=None):
+    def action_complete(self, user):
         self.ensure_one()
-        if self.state not in {"draft", "returned"}:
-            raise ValidationError("只有待录入或已退回的质检单可以提交审批。")
+        self.env.cr.execute("SELECT id FROM brew_quality_inspection WHERE id = %s FOR UPDATE", [self.id])
+        self.invalidate_recordset(["state"])
+        self.env.cr.execute("SELECT id FROM brew_receipt WHERE id = %s FOR UPDATE", [self.receipt_id.id])
+        self.receipt_id.invalidate_recordset(["state"])
+        if self.state not in {"draft", "returned", "submitted"} or self.receipt_id.state != "arrived":
+            raise ValidationError("只有尚未完成的到货质检单可以质检入库。")
         self._validate_results()
-        if self.state == "returned" and self.approval_instance_id:
-            stale = self.approval_instance_id
-            stale.step_ids.filtered(lambda step: step.state == "pending").write(
-                {
-                    "state": "returned",
-                    "acted_by_id": user.id,
-                    "acted_at": fields.Datetime.now(),
-                    "comment": self.return_reason or "质检结果退回后重新提交。",
-                }
-            )
-            stale.write({"state": "returned", "completed_at": fields.Datetime.now()})
-            stale.flush_recordset(["state"])
-        approval = self.env["brew.approval.instance"].create_for_target(
-            "quality_inspection",
-            self,
-            user,
-            self.factory_id,
-            {
-                "quantity": sum(self.line_ids.mapped("inspected_qty")),
-                "rejected_quantity": sum(self.line_ids.mapped("rejected_qty")),
-            },
-            submission_comment=str(submission_comment or "").strip() or None,
-        )
-        self.write(
-            {
-                "state": "submitted",
-                "inspector_id": user.id,
-                "inspected_at": fields.Datetime.now(),
-                "approval_instance_id": approval.id,
-                "return_reason": False,
-            }
-        )
-        return approval
+        for line in self.line_ids:
+            if abs(line.qualified_qty + line.rejected_qty - line.inspected_qty) > 0.000001:
+                raise ValidationError("合格与不合格数量之和必须等于检验数量。")
+        # Retire outstanding historical reviews without recording a fake approval.
+        pending = self.env["brew.approval.instance"].sudo().search([
+            ("target_model", "=", self._name), ("target_id", "=", self.id),
+            ("company_id", "=", self.company_id.id), ("state", "=", "pending"),
+        ])
+        pending.step_ids.filtered(lambda step: step.state == "pending").write({
+            "state": "returned", "acted_by_id": user.id, "acted_at": fields.Datetime.now(),
+            "comment": "质检改为直接入库，结束历史审批。",
+        })
+        pending.write({"state": "cancelled", "completed_at": fields.Datetime.now()})
+        self.write({"state": "completed", "inspector_id": user.id,
+                    "inspected_at": fields.Datetime.now(), "return_reason": False})
+        self.receipt_id.write({"state": "inspected"})
+        self.receipt_id.action_put_away()
+        return True
+
+    def action_submit(self, user, submission_comment=None):
+        # Compatibility for older clients: submission now completes QC and put-away.
+        return self.action_complete(user)
 
     def action_approve(self):
         self.ensure_one()
@@ -1123,7 +1138,19 @@ class BrewPurchaseReturn(models.Model):
         supplier_location = self.partner_id.property_stock_supplier
         for line in self.line_ids:
             if line.return_qty > 0:
-                source = self.receipt_id.destination_location_id if self.receipt_id else self.factory_id.stock_warehouse_id.lot_stock_id
+                receipt_line = self.env["brew.receipt.line"].search(
+                    [
+                        ("purchase_order_line_id", "=", line.purchase_order_line_id.id),
+                        ("lot_id", "=", line.lot_id.id),
+                        ("receipt_id.state", "=", "done"),
+                    ],
+                    limit=1,
+                )
+                source = (
+                    (receipt_line.destination_location_id or receipt_line.receipt_id.destination_location_id)
+                    if receipt_line
+                    else self.factory_id.stock_warehouse_id.lot_stock_id
+                )
                 self.env["brew.receipt"]._brew_create_done_move(
                     name=self.name,
                     product=line.product_id,

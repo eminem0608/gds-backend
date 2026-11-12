@@ -21,7 +21,7 @@ class PackagingController(BrewApiController):
    if not mutation:
     if record_id:return self._response(service.serialize(service.record(record_id)),request_id=rid)
     page=max(1,int(request.httprequest.args.get('page',1)));size=min(100,max(1,int(request.httprequest.args.get('page_size',30))))
-    return self._response(service.list(page,size,request.httprequest.args.get('keyword',''),request.httprequest.args.get('include_inactive')=='true'),request_id=rid)
+    return self._response(service.list(page,size,request.httprequest.args.get('keyword',''),request.httprequest.args.get('include_inactive')=='true',request.httprequest.args.get('catalog_only')=='true'),request_id=rid)
    payload=self._json_body();idem,replay=self._start_idempotency(user,company,payload)
    if replay:return replay
    record,data=service.action(record_id,action,payload) if action else service.save(payload,record_id)

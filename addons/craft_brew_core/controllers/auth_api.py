@@ -7,6 +7,8 @@ from odoo.http import request
 ROLE_XMLIDS = [
     "craft_brew_core.group_brew_general_manager",
     "craft_brew_core.group_brew_production_director",
+    "craft_brew_core.group_brew_headquarters_planner",
+    "craft_brew_core.group_brew_brewery_manager",
     "craft_brew_core.group_brew_operator",
     "craft_brew_core.group_brew_warehouse",
     "craft_brew_core.group_brew_purchase",

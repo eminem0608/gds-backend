@@ -45,11 +45,6 @@ class BrewRecipe(models.Model):
 
     _sql_constraints = [
         ("company_code_unique", "unique(company_id, code)", "同一企业内配方编码必须唯一。"),
-        (
-            "company_product_equipment_unique",
-            "unique(company_id, product_tmpl_id, equipment_id)",
-            "同一企业内同一成品和酿造系统只能关联一个配方。",
-        ),
     ]
 
     @api.depends("version_ids.state")
@@ -191,9 +186,13 @@ class BrewRecipeVersion(models.Model):
         self.ensure_one()
         if self.state != "submitted":
             raise ValidationError("只有待审核版本可以审核通过。")
+        current = self.recipe_id.version_ids.filtered(
+            lambda item: item.id != self.id and item.state == "active"
+        )
+        current.with_context(brew_state_transition=True).write({"state": "inactive"})
         self.with_context(brew_state_transition=True).write(
             {
-                "state": "approved",
+                "state": "active",
                 "approved_by_id": (user or self.env.user).id,
                 "approved_at": fields.Datetime.now(),
             }
@@ -209,24 +208,6 @@ class BrewRecipeVersion(models.Model):
             {"state": "returned", "return_reason": reason}
         )
         self._record_review_event("returned", user=user, comment=reason)
-        return True
-
-    def action_activate(self, user=None):
-        self.ensure_one()
-        if self.state != "approved":
-            raise ValidationError("只有已审核版本可以启用。")
-        current = self.recipe_id.version_ids.filtered(lambda item: item.state == "active")
-        current.with_context(brew_state_transition=True).write({"state": "inactive"})
-        self.with_context(brew_state_transition=True).write({"state": "active"})
-        self._record_review_event("activated", user=user)
-        return True
-
-    def action_deactivate(self, user=None):
-        self.ensure_one()
-        if self.state != "active":
-            raise ValidationError("只有使用中的版本可以停用。")
-        self.with_context(brew_state_transition=True).write({"state": "inactive"})
-        self._record_review_event("deactivated", user=user)
         return True
 
     def copy_as_draft(self):

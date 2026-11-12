@@ -5,12 +5,14 @@ from .inventory import InventoryService
 
 
 TRACE_READ_GROUPS = {
+    "craft_brew_core.group_brew_purchase",
     "craft_brew_core.group_brew_general_manager",
     "craft_brew_core.group_brew_production_director",
     "craft_brew_core.group_brew_operator",
     "craft_brew_core.group_brew_warehouse",
     "craft_brew_core.group_brew_sales",
     "craft_brew_core.group_brew_admin",
+    "craft_brew_core.group_brew_brewery_manager",
 }
 
 
@@ -63,7 +65,7 @@ class TraceService:
             "id": str(record.id), "name": record.name, "state": record.state,
             "factory": {"id": str(record.factory_id.id), "name": record.factory_id.name},
             "session": {"id": str(record.session_id.id), "name": record.session_id.name},
-            "batch": {"id": str(record.batch_id.id), "name": record.batch_id.name},
+            "batch": {"id": str(record.batch_id.id), "name": record.batch_id.name, "finished_product_code": record.batch_id.finished_product_code},
             "product": {"id": str(record.product_id.id), "name": record.product_id.display_name},
             "packaging": {"id": str(record.packaging_id.id), "name": record.packaging_id.name, "level": record.packaging_id.brew_barcode_level},
             "finished_location": {"id": str(record.finished_location_id.id), "name": record.finished_location_id.complete_name},
@@ -120,6 +122,8 @@ class TraceService:
 
     def packaging_action(self, record_id, action, payload):
         record = self._record("brew.packaging.order", record_id)
+        self.env.cr.execute("SELECT id FROM brew_packaging_order WHERE id = %s FOR UPDATE", [record.id])
+        record.invalidate_recordset()
         self._check_version(record, payload.get("version"))
         if action == "start":
             self._require_production(); record.action_start()

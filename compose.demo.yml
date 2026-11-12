@@ -1,0 +1,44 @@
+name: craft_brew_demo
+
+services:
+  db:
+    image: postgres:15
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: craft_brew_dev
+      POSTGRES_USER: craft_brew_demo
+      POSTGRES_PASSWORD: ${CRAFT_BREW_DB_PASSWORD:?Set CRAFT_BREW_DB_PASSWORD in .env.demo}
+    volumes:
+      - demo_db_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U craft_brew_demo -d craft_brew_dev"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+
+  odoo:
+    image: odoo:17
+    restart: unless-stopped
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      HOST: db
+      USER: craft_brew_demo
+      PASSWORD: ${CRAFT_BREW_DB_PASSWORD:?Set CRAFT_BREW_DB_PASSWORD in .env.demo}
+    ports:
+      - "127.0.0.1:18069:8069"
+    volumes:
+      - ./addons:/mnt/extra-addons:ro
+      - ./deploy/odoo.demo.conf:/etc/odoo/odoo.conf:ro
+      - demo_odoo_data:/var/lib/odoo
+    command:
+      - odoo
+      - --database=craft_brew_dev
+      - --no-database-list
+      - --workers=0
+      - --max-cron-threads=1
+
+volumes:
+  demo_db_data:
+  demo_odoo_data:

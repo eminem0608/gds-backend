@@ -56,7 +56,7 @@ class FermentationController(BrewApiController):
         except Exception as exc:
             return self._error_response(exc, request_id)
 
-    @http.route("/api/v1/tanks/<int:tank_id>", type="http", auth="public", methods=["GET"], csrf=False)
+    @http.route(["/api/v1/tanks/<int:tank_id>", "/api/v1/fermentation/tanks/<int:tank_id>"], type="http", auth="public", methods=["GET"], csrf=False)
     def tank(self, tank_id):
         request_id = self._request_id()
         try:

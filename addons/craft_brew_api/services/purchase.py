@@ -1,4 +1,5 @@
 from datetime import datetime, timezone
+from math import isfinite
 
 from odoo import Command, fields
 from odoo.tools.float_utils import float_is_zero
@@ -9,6 +10,7 @@ from .inventory import InventoryService
 
 PURCHASE_READ_GROUPS = {
     "craft_brew_core.group_brew_general_manager",
+    "craft_brew_core.group_brew_brewery_manager",
     "craft_brew_core.group_brew_production_director",
     "craft_brew_core.group_brew_warehouse",
     "craft_brew_core.group_brew_purchase",
@@ -32,6 +34,13 @@ class PurchaseService:
         ):
             raise ApiError("PERMISSION_DENIED", "只有采购或系统管理员可以执行该操作。", 403)
 
+    def _require_requisition_requester(self):
+        if not (
+            self.user.has_group("craft_brew_core.group_brew_production_director")
+            or self.user.has_group("craft_brew_core.group_brew_admin")
+        ):
+            raise ApiError("PERMISSION_DENIED", "只有酒厂生产总监或系统管理员可以发起采购需求。", 403)
+
     def _require_warehouse(self):
         if not (
             self.user.has_group("craft_brew_core.group_brew_warehouse")
@@ -48,16 +57,7 @@ class PurchaseService:
             raise ApiError("PERMISSION_DENIED", "当前账号无权审批采购单据。", 403)
 
     def _factory_ids(self):
-        if (
-            self.user.has_group("craft_brew_core.group_brew_general_manager")
-            or self.user.has_group("craft_brew_core.group_brew_admin")
-        ):
-            return self.env["brew.factory"].sudo().search(
-                [("company_id", "=", self.company.id), ("active", "=", True)]
-            ).ids
-        return self.user.brew_factory_ids.filtered(
-            lambda item: item.company_id == self.company and item.active
-        ).ids
+        return self.user.brew_allowed_factories(self.company).ids
 
     def _factory(self, factory_id):
         factory = self.env["brew.factory"].sudo().search(
@@ -122,7 +122,7 @@ class PurchaseService:
         )[:1]
         if not step:
             raise ApiError('STATE_PRECONDITION_FAILED', 'No pending approval step for this document.', 409)
-        if step.role_code not in self.user.brew_role_codes():
+        if step.role_code not in self.user.brew_role_codes() and not self.user.has_group("craft_brew_core.group_brew_admin"):
             raise ApiError('PERMISSION_DENIED', 'You cannot process this approval step.', 403)
         return step
 
@@ -138,6 +138,8 @@ class PurchaseService:
         )
         if not product:
             raise ApiError("RESOURCE_NOT_FOUND", "采购物料不存在。", 404)
+        if product.brew_item_type == "packaging_material" and product.brew_packaging_catalog_owner_id:
+            raise ApiError("DATA_SCOPE_DENIED", "该商品属于供应商自己的目录，不是酒厂材料。", 403)
         if product.brew_item_type == "packaging_material" and product.brew_packaging_state and product.brew_packaging_state != "confirmed":
             raise ApiError("STATE_PRECONDITION_FAILED", "该包装商品尚未经过酒厂确认，不能采购。", 422)
         return product
@@ -156,6 +158,41 @@ class PurchaseService:
             ],
             order="date_order,id",
         )
+        lines = []
+        quoted_total = 0.0
+        unpriced_line_count = 0
+        for line in record.line_ids:
+            product = line.product_id.product_tmpl_id
+            unit_price = None
+            line_amount = None
+            if product.brew_supplier_price and product.uom_id.category_id == line.uom_id.category_id:
+                unit_price = product.uom_id._compute_price(product.brew_supplier_price, line.uom_id)
+                line_amount = unit_price * line.requested_qty
+                quoted_total += line_amount
+            else:
+                unpriced_line_count += 1
+            lines.append({
+                "id": str(line.id),
+                "product": {"id": str(line.product_id.id), "name": line.product_id.display_name},
+                "requested_qty": line.requested_qty,
+                "approved_qty": line.approved_qty,
+                "ordered_qty": line.ordered_qty,
+                "uom": {"id": str(line.uom_id.id), "name": line.uom_id.name},
+                "estimated_unit_price": unit_price,
+                "estimated_amount": line_amount,
+                "allocations": [
+                    {
+                        "plan_id": str(allocation.production_plan_id.id),
+                        "plan_name": allocation.production_plan_id.name,
+                        "product_name": allocation.production_plan_id.product_tmpl_id.name,
+                        "demand_name": allocation.production_plan_id.demand_id.name if allocation.production_plan_id.demand_id else None,
+                        "required_qty": allocation.required_qty,
+                        "shortage_qty": allocation.shortage_qty,
+                        "source_shortage_qty": allocation.source_shortage_qty or allocation.shortage_qty,
+                    }
+                    for allocation in line.allocation_ids
+                ],
+            })
         return {
             "id": str(record.id),
             "name": record.name,
@@ -199,29 +236,10 @@ class PurchaseService:
                 }
                 for order in linked_orders
             ],
-            "lines": [
-                {
-                    "id": str(line.id),
-                    "product": {
-                        "id": str(line.product_id.id),
-                        "name": line.product_id.display_name,
-                    },
-                    "requested_qty": line.requested_qty,
-                    "approved_qty": line.approved_qty,
-                    "ordered_qty": line.ordered_qty,
-                    "uom": {"id": str(line.uom_id.id), "name": line.uom_id.name},
-                    "allocations": [
-                        {
-                            "plan_id": str(allocation.production_plan_id.id),
-                            "plan_name": allocation.production_plan_id.name,
-                            "required_qty": allocation.required_qty,
-                            "shortage_qty": allocation.shortage_qty,
-                        }
-                        for allocation in line.allocation_ids
-                    ],
-                }
-                for line in record.line_ids
-            ],
+            "lines": lines,
+            "estimated_total_amount": quoted_total if not unpriced_line_count else None,
+            "estimated_quoted_subtotal": quoted_total,
+            "estimated_unpriced_line_count": unpriced_line_count,
             "version": self._version(record),
         }
 
@@ -246,7 +264,11 @@ class PurchaseService:
         if filters.get("request_type"):
             domain.append(("request_type", "=", filters["request_type"]))
         if filters.get("state"):
-            domain.append(("state", "=", filters["state"]))
+            states = [item for item in str(filters["state"]).split(",") if item]
+            if len(states) == 1:
+                domain.append(("state", "=", states[0]))
+            elif states:
+                domain.append(("state", "in", states))
         if filters.get("date_from"):
             domain.append(("need_date", ">=", filters["date_from"]))
         if filters.get("date_to"):
@@ -306,17 +328,22 @@ class PurchaseService:
         return linked
 
     def requisition_source_plans(self, filters=None):
-        self._require_purchase()
         filters = filters or {}
         domain = [
             ("company_id", "=", self.company.id),
             ("factory_id", "in", self._factory_ids()),
-            # Checked is the normal entry point for requesting stock; stocking
-            # keeps plans with generated requisitions visible without duplication.
-            ("state", "in", ["checked", "stocking", "approved", "dispatched", "in_progress"]),
+            # InventoryService can recalculate shortages only before dispatch.
+            ("state", "in", ["checked", "stocking", "pending_approval", "approved"]),
         ]
+        if filters.get("factory_id"):
+            domain.append(("factory_id", "=", int(filters["factory_id"])))
         if filters.get("plan_no"):
-            domain.append(("name", "ilike", filters["plan_no"]))
+            domain.extend([
+                "|", "|",
+                ("name", "ilike", filters["plan_no"]),
+                ("demand_id.name", "ilike", filters["plan_no"]),
+                ("product_tmpl_id.name", "ilike", filters["plan_no"]),
+            ])
         # A plan belongs in the result whenever its production window overlaps
         # the selected window, including plans that start before the filter.
         if filters.get("date_from"):
@@ -412,6 +439,10 @@ class PurchaseService:
                         "id": str(plan.product_tmpl_id.id),
                         "name": plan.product_tmpl_id.display_name,
                     },
+                    "demand": {
+                        "id": str(plan.demand_id.id),
+                        "name": plan.demand_id.name,
+                    } if plan.demand_id else None,
                     "materials": materials,
                     "shortage_items": sum(1 for item in materials if item["requestable_qty"] > 0),
                 }
@@ -419,7 +450,7 @@ class PurchaseService:
         return result
 
     def create_requisition(self, payload):
-        self._require_purchase()
+        self._require_requisition_requester()
         if payload.get("request_type") != "emergency":
             raise ApiError(
                 "STATE_PRECONDITION_FAILED",
@@ -466,10 +497,12 @@ class PurchaseService:
                 "line_ids": commands,
             }
         )
+        # Create and submit in the same API transaction; submission errors roll back creation.
+        record.action_submit(self.user)
         return record, self._serialize_requisition(record)
 
     def update_requisition(self, record_id, payload):
-        self._require_purchase()
+        self._require_requisition_requester()
         record = self._record("brew.purchase.requisition", record_id)
         self._check_version(record, payload.get("version"))
         if record.state not in {"draft", "returned"}:
@@ -569,14 +602,18 @@ class PurchaseService:
         if not values:
             raise ApiError("VALIDATION_REQUIRED", "没有可更新的采购需求字段。", 422)
         record.write(values)
+        if payload.get("submit_after_save") is True:
+            record.action_submit(self.user)
         return record, self._serialize_requisition(record)
 
     def aggregate_requisitions(self, payload):
-        self._require_purchase()
-        selected_items = {
-            (int(item.get("plan_id") or 0), int(item.get("product_id") or 0))
-            for item in payload.get("items") or []
-        }
+        self._require_requisition_requester()
+        selected_items = {}
+        for item in payload.get("items") or []:
+            key = (int(item.get("plan_id") or 0), int(item.get("product_id") or 0))
+            if not all(key) or key in selected_items:
+                raise ApiError("VALIDATION_RELATION", "采购原料来源重复或无效。", 422)
+            selected_items[key] = item.get("requested_qty")
         plan_ids = list(dict.fromkeys(
             [int(value) for value in payload.get("plan_ids") or []]
             + [item[0] for item in selected_items if item[0]]
@@ -584,10 +621,19 @@ class PurchaseService:
         if not plan_ids or not payload.get("need_date"):
             raise ApiError("VALIDATION_REQUIRED", "生产计划和需求日期不能为空。", 422)
         inventory = InventoryService(self.env, self.user, self.company)
+        plans = [inventory._plan(plan_id) for plan_id in sorted(plan_ids)]
+        # Serialize requests for the same plans before reading committed quantities.
+        self.env.cr.execute(
+            "SELECT id FROM brew_production_plan WHERE id IN %s ORDER BY id FOR UPDATE",
+            [tuple(plan.id for plan in plans)],
+        )
+        for plan in plans:
+            plan.invalidate_recordset()
+            if plan.state not in {"checked", "stocking", "approved", "dispatched", "in_progress"}:
+                raise ApiError("STATE_PRECONDITION_FAILED", "当前生产计划不可生成采购需求。", 422)
         committed = self._committed_shortages(plan_ids)
         grouped = {}
-        for plan_id in plan_ids:
-            plan = inventory._plan(plan_id)
+        for plan in plans:
             result = inventory.plan_inventory(plan.id, reserve=False)
             factory_group = grouped.setdefault(plan.factory_id.id, {})
             for item in result["materials"]:
@@ -604,16 +650,27 @@ class PurchaseService:
                     requestable_qty, precision_rounding=product.uom_id.rounding
                 ):
                     continue
+                requested_qty = selected_items.get((plan.id, product_id)) if selected_items else None
+                if requested_qty is None:
+                    requested_qty = requestable_qty
+                else:
+                    try:
+                        requested_qty = float(requested_qty)
+                    except (TypeError, ValueError) as exc:
+                        raise ApiError("VALIDATION_RANGE", "采购数量必须是大于零的有效数字。", 422) from exc
+                    if not isfinite(requested_qty) or requested_qty <= 0:
+                        raise ApiError("VALIDATION_RANGE", "采购数量必须是大于零的有效数字。", 422)
                 values = factory_group.setdefault(
                     product_id,
                     {"quantity": 0.0, "allocations": [], "uom": item["uom"]},
                 )
-                values["quantity"] += requestable_qty
+                values["quantity"] += requested_qty
                 values["allocations"].append(
                     {
                         "plan": plan,
                         "required": item["required"],
-                        "shortage": requestable_qty,
+                        "shortage": requested_qty,
+                        "source_shortage": item["shortage"],
                     }
                 )
         records = self.env["brew.purchase.requisition"]
@@ -627,6 +684,7 @@ class PurchaseService:
                             "production_plan_id": item["plan"].id,
                             "required_qty": item["required"],
                             "shortage_qty": item["shortage"],
+                            "source_shortage_qty": item["source_shortage"],
                             "uom_id": product.uom_id.id,
                         }
                     )
@@ -660,13 +718,15 @@ class PurchaseService:
                 "所选缺口已生成采购需求，请刷新后重新选择。",
                 409,
             )
+        for record in records:
+            record.action_submit(self.user)
         return records, [self._serialize_requisition(item) for item in records]
 
     def requisition_action(self, record_id, action, payload):
         record = self._record("brew.purchase.requisition", record_id)
         self._check_version(record, payload.get("version"))
         if action == "submit":
-            self._require_purchase()
+            self._require_requisition_requester()
             record.action_submit(self.user)
         elif action == "approve":
             self._require_director()
@@ -1196,7 +1256,7 @@ class PurchaseService:
         self._require_purchase()
         order = self._record("purchase.order", order_id, "brew_factory_id")
         self._check_version(order, payload.get("version"))
-        if order.state not in {"draft", "sent"} or order.brew_approval_state not in {"none", "returned"}:
+        if order.state not in {"draft", "sent"}:
             raise ApiError("STATE_PRECONDITION_FAILED", "当前采购订单不可修改。", 422)
         values = {}
         if "supplier_id" in payload:
@@ -1318,6 +1378,8 @@ class PurchaseService:
                 raise ApiError("VALIDATION_REQUIRED", "没有可更新的采购订单字段。", 422)
         else:
             order.write(values)
+        if payload.get("submit_after_save") is True:
+            order.action_brew_place()
         return order, self._serialize_order(order)
 
     def order_action(self, order_id, action, payload):
@@ -1325,7 +1387,7 @@ class PurchaseService:
         self._check_version(order, payload.get("version"))
         if action == "submit":
             self._require_purchase()
-            order.action_brew_submit(self.user, payload.get("resubmit_note"))
+            order.action_brew_place()
         elif action == "approve":
             self._require_director()
             step = self._pending_approval_step(order.brew_approval_instance_id)
@@ -1419,6 +1481,12 @@ class PurchaseService:
             raise ApiError("VALIDATION_RELATION", "收货库位无效。", 422)
         return location
 
+    def _receipt_destination(self, location_id, factory):
+        location = self._location(location_id, factory)
+        if location.brew_location_type in {"qc", "material_issue"}:
+            raise ApiError("VALIDATION_RELATION", "请选择原料仓或包装物仓作为入库库位。", 422)
+        return location
+
     def _serialize_receipt(self, record):
         order = record.purchase_order_id
         supplier = order.partner_id
@@ -1456,7 +1524,7 @@ class PurchaseService:
             if line.lot_id:
                 stock_available_qty = self.env["stock.quant"].sudo()._get_available_quantity(
                     line.product_id,
-                    record.destination_location_id,
+                    line.destination_location_id or record.destination_location_id,
                     lot_id=line.lot_id,
                     strict=False,
                 )
@@ -1488,6 +1556,10 @@ class PurchaseService:
                         else None
                     ),
                     "lot_id": str(line.lot_id.id) if line.lot_id else None,
+                    "destination_location": {
+                        "id": str((line.destination_location_id or record.destination_location_id).id),
+                        "name": (line.destination_location_id or record.destination_location_id).complete_name,
+                    },
                     "qualified_qty": qualified,
                     "rejected_qty": rejected,
                     "returned_qty": returned_qty,
@@ -1602,7 +1674,7 @@ class PurchaseService:
         if order.state != "purchase":
             raise ApiError("STATE_PRECONDITION_FAILED", "采购订单尚未正式下单。", 422)
         qc_location = self._location(payload.get("qc_location_id"), order.brew_factory_id)
-        destination = self._location(
+        destination = self._receipt_destination(
             payload.get("destination_location_id"), order.brew_factory_id
         )
         if qc_location.brew_location_type != "qc":
@@ -1634,11 +1706,16 @@ class PurchaseService:
             if order_line.id in seen_order_lines:
                 raise ApiError("VALIDATION_RELATION", "同一采购明细不能重复登记。", 422)
             seen_order_lines.add(order_line.id)
+            line_destination = self._receipt_destination(
+                values.get("destination_location_id") or destination.id,
+                order.brew_factory_id,
+            )
             lot_name = f"{receipt_name}-{index:02d}"
             commands.append(
                 Command.create(
                     {
                         "purchase_order_line_id": order_line.id,
+                        "destination_location_id": line_destination.id,
                         "received_qty": quantity,
                         "lot_name": lot_name,
                         "supplier_lot": values.get("supplier_lot"),
@@ -1648,16 +1725,19 @@ class PurchaseService:
             )
         if not commands:
             raise ApiError("VALIDATION_REQUIRED", "收货明细不能为空。", 422)
-        receipt = self.env["brew.receipt"].sudo().create(
-            {
-                "name": receipt_name,
-                "purchase_order_id": order.id,
-                "shipment_id": shipment.id or False,
-                "qc_location_id": qc_location.id,
-                "destination_location_id": destination.id,
-                "line_ids": commands,
-            }
-        )
+        with self.env.cr.savepoint():
+            receipt = self.env["brew.receipt"].sudo().create(
+                {
+                    "name": receipt_name,
+                    "purchase_order_id": order.id,
+                    "shipment_id": shipment.id or False,
+                    "qc_location_id": qc_location.id,
+                    "destination_location_id": destination.id,
+                    "line_ids": commands,
+                }
+            )
+            if payload.get("confirm_arrival") is True:
+                receipt.action_confirm_arrival(self.user)
         return receipt, self._serialize_receipt(receipt)
 
     def update_receipt(self, receipt_id, payload):
@@ -1687,9 +1767,8 @@ class PurchaseService:
                 raise ApiError("VALIDATION_RELATION", "到货必须先进入待检库位。", 422)
             vals["qc_location_id"] = qc_location.id
         if "destination_location_id" in payload:
-            vals["destination_location_id"] = self._location(
-                payload.get("destination_location_id"), receipt.factory_id
-            ).id
+            destination = self._receipt_destination(payload.get("destination_location_id"), receipt.factory_id)
+            vals["destination_location_id"] = destination.id
         if "note" in payload:
             vals["note"] = payload.get("note")
 
@@ -1721,8 +1800,14 @@ class PurchaseService:
                 if order_line_id in used_order_line_ids:
                     raise ApiError("VALIDATION_RELATION", "同一采购明细不能重复登记。", 422)
                 used_order_line_ids.add(order_line_id)
+                destination_id = values.get("destination_location_id") or (
+                    existing.destination_location_id.id if existing and existing.destination_location_id
+                    else vals.get("destination_location_id", receipt.destination_location_id.id)
+                )
+                line_destination = self._receipt_destination(destination_id, receipt.factory_id)
                 line_values = {
                     "purchase_order_line_id": order_line_id,
+                    "destination_location_id": line_destination.id,
                     "received_qty": quantity,
                     "supplier_lot": values.get("supplier_lot"),
                     "expiration_date": values.get("expiration_date") or False,
@@ -1741,8 +1826,11 @@ class PurchaseService:
             commands.extend(Command.delete(line.id) for line in existing_by_id.values())
             vals["line_ids"] = commands
 
-        if vals:
-            receipt.write(vals)
+        with self.env.cr.savepoint():
+            if vals:
+                receipt.write(vals)
+            if payload.get("confirm_arrival") is True:
+                receipt.action_confirm_arrival(self.user)
         return receipt, self._serialize_receipt(receipt)
 
     def receipt_action(self, receipt_id, action, payload):
@@ -1849,7 +1937,9 @@ class PurchaseService:
             ("company_id", "=", self.company.id),
             ("factory_id", "in", self._factory_ids()),
         ]
-        if filters.get("state"):
+        if filters.get("state") == "pending":
+            domain.append(("state", "in", ["draft", "submitted", "returned"]))
+        elif filters.get("state"):
             domain.append(("state", "=", filters["state"]))
         if filters.get("keyword"):
             kw = filters["keyword"]
@@ -1893,44 +1983,53 @@ class PurchaseService:
             "brew.quality.inspection", inspection_id
         )
         self._check_version(inspection, payload.get("version"))
-        if inspection.state not in {"draft", "returned"}:
-            raise ApiError("STATE_PRECONDITION_FAILED", "只有待录入或已退回的质检单可以修改。", 422)
-        by_id = {line.id: line for line in inspection.line_ids}
-        incoming = payload.get("lines") or []
-        if not incoming:
-            raise ApiError("VALIDATION_REQUIRED", "质检结果不能为空。", 422)
-        for values in incoming:
-            line = by_id.get(int(values.get("id") or 0))
-            if not line:
-                raise ApiError("VALIDATION_RELATION", "质检明细不存在。", 422)
-            qualified = float(values.get("qualified_qty") or 0)
-            rejected = float(values.get("rejected_qty") or 0)
-            if qualified < 0 or rejected < 0:
-                raise ApiError("VALIDATION_RANGE", "质检数量不能小于零。", 422)
-            if qualified + rejected > float(line.inspected_qty) + float(line.uom_id.rounding):
-                raise ApiError("VALIDATION_RANGE", f"{line.product_id.display_name} 的合格与不合格数量之和不能超过检验数量 {line.inspected_qty}。", 422)
-            if rejected and not values.get("disposition"):
-                raise ApiError("VALIDATION_REQUIRED", f"{line.product_id.display_name} 存在不合格数量，请选择退货或报损。", 422)
-            line.write(
-                {
-                    "qualified_qty": qualified,
-                    "rejected_qty": rejected,
-                    "disposition": values.get("disposition") or False,
-                    "result_json": values.get("result_json") or "{}",
-                    "note": values.get("note"),
-                }
-            )
-        if "note" in payload:
-            inspection.note = payload["note"]
+        if inspection.state not in {"draft", "returned", "submitted"}:
+            raise ApiError("STATE_PRECONDITION_FAILED", "只有尚未完成的质检单可以修改。", 422)
+        with self.env.cr.savepoint():
+            by_id = {line.id: line for line in inspection.line_ids}
+            incoming = payload.get("lines") or []
+            if not incoming:
+                raise ApiError("VALIDATION_REQUIRED", "质检结果不能为空。", 422)
+            incoming_ids = [int(values.get("id") or 0) for values in incoming]
+            if len(set(incoming_ids)) != len(incoming_ids):
+                raise ApiError("VALIDATION_RELATION", "质检明细不能重复。", 422)
+            if payload.get("complete_and_put_away") is True and set(incoming_ids) != set(by_id):
+                raise ApiError("VALIDATION_REQUIRED", "请填写全部质检明细后再确认入库。", 422)
+            for values in incoming:
+                line = by_id.get(int(values.get("id") or 0))
+                if not line:
+                    raise ApiError("VALIDATION_RELATION", "质检明细不存在。", 422)
+                qualified = float(values.get("qualified_qty") or 0)
+                rejected = float(values.get("rejected_qty") or 0)
+                if not isfinite(qualified) or not isfinite(rejected) or qualified < 0 or rejected < 0:
+                    raise ApiError("VALIDATION_RANGE", "质检数量不能小于零。", 422)
+                if qualified + rejected > float(line.inspected_qty) + float(line.uom_id.rounding):
+                    raise ApiError("VALIDATION_RANGE", f"{line.product_id.display_name} 的合格与不合格数量之和不能超过检验数量 {line.inspected_qty}。", 422)
+                if rejected and not values.get("disposition"):
+                    raise ApiError("VALIDATION_REQUIRED", f"{line.product_id.display_name} 存在不合格数量，请选择退货或报损。", 422)
+                line.write(
+                    {
+                        "qualified_qty": qualified,
+                        "rejected_qty": rejected,
+                        "disposition": values.get("disposition") or False,
+                        "result_json": values.get("result_json") or "{}",
+                        "note": values.get("note"),
+                    }
+                )
+            if "note" in payload:
+                inspection.note = payload["note"]
+            if payload.get("complete_and_put_away") is True:
+                inspection.action_complete(self.user)
         return inspection, self._serialize_inspection(inspection)
 
     def inspection_action(self, inspection_id, action, payload):
         self._require_warehouse()
         inspection = self._record("brew.quality.inspection", inspection_id)
         self._check_version(inspection, payload.get("version"))
-        if action not in {"submit"}:
+        if action not in {"submit", "complete"}:
             raise ApiError("RESOURCE_NOT_FOUND", "质检动作不存在。", 404)
-        inspection.action_submit(self.user, payload.get("submission_comment"))
+        with self.env.cr.savepoint():
+            inspection.action_complete(self.user)
         return inspection, self._serialize_inspection(inspection)
 
     # ── Purchase Returns ──────────────────────────────────────────
@@ -2076,7 +2175,7 @@ class PurchaseService:
                 if rline.lot_id:
                     stock_available_qty = self.env["stock.quant"].sudo()._get_available_quantity(
                         rline.product_id,
-                        rline.receipt_id.destination_location_id,
+                        rline.destination_location_id or rline.receipt_id.destination_location_id,
                         lot_id=rline.lot_id,
                         strict=False,
                     )
@@ -2152,7 +2251,7 @@ class PurchaseService:
             if rline.lot_id:
                 stock_available_qty = self.env["stock.quant"].sudo()._get_available_quantity(
                     rline.product_id,
-                    rline.receipt_id.destination_location_id,
+                    rline.destination_location_id or rline.receipt_id.destination_location_id,
                     lot_id=rline.lot_id,
                     strict=False,
                 )
@@ -2320,6 +2419,8 @@ class PurchaseService:
                 record.write({"line_ids": new_commands})
         if vals:
             record.write(vals)
+        if payload.get("submit_after_save") is True:
+            record.action_submit(self.user)
         return record, self._serialize_return(record)
 
     def return_action(self, return_id, action, payload):

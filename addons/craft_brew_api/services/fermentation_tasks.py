@@ -44,6 +44,24 @@ def build_schedule(design, start, timezone='Asia/Shanghai'):
     return {'schema': 'fermentation-v1', 'started_at': start.isoformat(), 'timezone': timezone, 'target_days': days, 'entries': entries, 'records': []}
 
 
+def extend_daily_schedule(data, now):
+    """Keep routine monitoring alive until the operator actually closes the stage."""
+    today = day_date(now, 1, data['timezone'])
+    day = (datetime.fromisoformat(today).date() - datetime.fromisoformat(day_date(parse_time(data['started_at']), 1, data['timezone'])).date()).days + 1
+    if day < data['target_days']:
+        return
+    existing = {entry['id'] for entry in data['entries']}
+    rules = {entry['rule_index']: entry['rule'] for entry in data['entries'] if entry['rule'].get('condition') == 'time' and entry['rule'].get('schedule_type', 'daily') in {'daily', 'interval'}}
+    for index, rule in rules.items():
+        interval = int(rule.get('interval_days') or 1)
+        for number in range(data['target_days'] + 1, day + 2):
+            if rule.get('schedule_type') == 'interval' and number % interval:
+                continue
+            key = f'{index}:{number}'
+            if key not in existing:
+                data['entries'].append({'id': key, 'rule_index': index, 'day': number, 'date': day_date(parse_time(data['started_at']), number, data['timezone']), 'rule': dict(rule), 'state': 'pending', 'trigger': None, 'record': None})
+
+
 def evaluate(data, now):
     today = day_date(now, 1, data['timezone'])
     latest = {}
@@ -72,7 +90,7 @@ def evaluate(data, now):
         entry['metric'] = action_metric
     data['today'] = today
     data['day'] = max(1, (datetime.fromisoformat(today).date() - datetime.fromisoformat(day_date(parse_time(data['started_at']), 1, data['timezone'])).date()).days + 1)
-    data['can_complete'] = bool(data['entries']) and all(entry['status'] == 'done' for entry in data['entries'])
+    data['can_complete'] = bool(data['entries']) and all(entry['status'] == 'done' for entry in data['entries'] if not (entry.get('day', 0) and entry['day'] > data['day'] and entry['day'] > data['target_days']))
     return data
 
 

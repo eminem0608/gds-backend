@@ -22,7 +22,17 @@ def number(value, label, minimum=None, maximum=None, optional=False):
     return result
 
 
-def design_values(env, company, design, volume):
+def mash_water_requirements(mash, volume, grain_weight):
+    """Original document formulas; existing snapshots keep their hourly model."""
+    original = mash.get("water_calculation") == "original"
+    boil_factor = 1 if original else float(mash.get("boil_time_min") or 0) / 60
+    pre_volume = volume * (1 + float(mash.get("evaporation_rate") or 0) / 100 * boil_factor)
+    mash_water = grain_weight * float(mash.get("water_grain_ratio") or 0)
+    first = mash_water if original else max(0, mash_water - grain_weight * float(mash.get("absorption_rate") or 0) - float(mash.get("screen_water_l") or 0))
+    return pre_volume, max(0, pre_volume - first)
+
+
+def design_values(env, company, design, volume, user=None, product_id=None):
     if not isinstance(design, dict):
         invalid("配方设计必须为对象。")
     if design.get("schema_version") != 2:
@@ -90,10 +100,18 @@ def design_values(env, company, design, volume):
     if len(waters) != int(count):
         invalid("洗糟次数与各次用水量不一致。")
     total = sum(number(w, "洗糟水量", 0) for w in waters)
-    pre_volume = volume * (1 + float(mash["evaporation_rate"]) / 100 * float(mash["boil_time_min"]) / 60)
-    first = max(0, grain_weight * (float(mash["water_grain_ratio"]) - float(mash["absorption_rate"])) - float(mash["screen_water_l"]))
-    if abs(total - max(0, pre_volume - first)) > .05:
+    _pre_volume, sparge_water = mash_water_requirements(mash, volume, grain_weight)
+    if abs(total - sparge_water) > (.005 if mash.get("water_calculation") == "original" else .05):
         invalid("洗糟水量合计与所需水量不一致。")
+    water = design.get('water_adjustment')
+    if water and water.get('enabled'):
+        from .water import WaterService
+        from odoo.addons.craft_brew_workflow.models.water_chemistry import validate_adjustment
+        water_service=WaterService(env,user or env.user,company)
+        water_service.validate_recipe(water,equipment)
+        water_service.validate_target(water,equipment,product_id)
+        try: validate_adjustment(water,design)
+        except (ValueError,TypeError) as exc: invalid(str(exc))
     steps = [Command.clear()]
 
     def step(name, phase, action="record", config=None, temperature=0, duration=0):
@@ -103,7 +121,27 @@ def design_values(env, company, design, volume):
         if not str(row.get("name") or "").strip():
             invalid("糖化步骤名称不能为空。")
         step(row["name"], "mash", config=row, temperature=number(row.get("temperature"), "糖化温度", 0, 100), duration=number(row.get("duration_min"), "糖化时间", 1) / 60)
-    step("煮沸", "mash", config={"boil_time_min": mash["boil_time_min"]}, duration=float(mash["boil_time_min"]) / 60)
+    workflow = mash.get("workflow") or {}
+    if workflow.get("execution_mode") == "manual":
+        operations = (workflow.get("operations") or {}).get("manual", [])
+        if not isinstance(operations, list):
+            invalid("工艺步骤必须为列表。")
+        operation_ids = set()
+        for row in operations:
+            if not isinstance(row, dict) or not str(row.get("name") or "").strip():
+                invalid("工艺步骤名称不能为空。")
+            code = row.get("id")
+            if not isinstance(code, str) or not code.strip() or code.startswith("rest_") or code in operation_ids:
+                invalid("工艺步骤标识无效或重复。")
+            operation_ids.add(code)
+            mode = row.get("input_mode", "confirm")
+            if mode not in {"confirm", "choice", "number", "text"}:
+                invalid("工艺步骤记录方式无效。")
+            if mode == "choice" and not any(item.strip() for item in str(row.get("target") or "").split("/")):
+                invalid("请填写工艺步骤的可选结果，并用 / 分隔。")
+            step(row["name"], "mash", config=row)
+    else:
+        step("煮沸", "mash", config={"boil_time_min": mash["boil_time_min"]}, duration=float(mash["boil_time_min"]) / 60)
     step("进罐确认", "fermentation", "enter_tank", temperature=number(fermentation.get("target_temperature"), "目标发酵温度", optional=True))
     actions = {"measure_gravity": "测量糖度", "measure_temperature": "测量温度", "measure_pressure": "测量压力", "measure_diacetyl": "测量双乙酰", "seal": "封罐", "dry_hop": "干投", "cool_to": "降温", "dump_hops": "排出酒花", "centrifuge": "离心", "increase_pressure": "升压", "package": "出酒"}
     for row in fermentation.get("steps", []):

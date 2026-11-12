@@ -3,6 +3,7 @@ import math
 from odoo import fields
 
 from ..controllers.base import ApiError
+from .production_lifecycle import can_close, require_close, close_plan
 
 
 class DemandService:
@@ -17,24 +18,26 @@ class DemandService:
             for group in [
                 "craft_brew_core.group_brew_general_manager",
                 "craft_brew_core.group_brew_production_director",
+                "craft_brew_core.group_brew_headquarters_planner",
                 "craft_brew_core.group_brew_admin",
             ]
         )
 
     def _ensure_sales(self):
-        if not (self.user.has_group("craft_brew_core.group_brew_sales") or self.user.has_group("craft_brew_core.group_brew_admin")):
-            raise ApiError("PERMISSION_DENIED", "只有销售可以维护产品需求。", 403)
+        if not (self.user.has_group("craft_brew_core.group_brew_sales") or self.user.has_group("craft_brew_core.group_brew_headquarters_planner") or self.user.has_group("craft_brew_core.group_brew_admin")):
+            raise ApiError("PERMISSION_DENIED", "只有销售或总部生产计划人员可以维护产品需求。", 403)
 
     def _ensure_director(self):
         if not (
             self.user.has_group("craft_brew_core.group_brew_production_director")
+            or self.user.has_group("craft_brew_core.group_brew_headquarters_planner")
             or self.user.has_group("craft_brew_core.group_brew_admin")
         ):
-            raise ApiError("PERMISSION_DENIED", "只有生产总监或系统管理员可以确认或退回需求。", 403)
+            raise ApiError("PERMISSION_DENIED", "只有总部生产计划、生产总监或系统管理员可以确认或退回需求。", 403)
 
     def _create_review_tasks(self, demand):
         task_model = self.env["brew.task"].sudo()
-        for role_code in ("production_director", "tenant_admin"):
+        for role_code in ("headquarters_planner", "production_director", "tenant_admin"):
             task_model.create({
                 "name": f"产品需求确认 · {demand.product_tmpl_id.name}",
                 "task_type": "demand_review",
@@ -55,7 +58,9 @@ class DemandService:
 
     def _domain(self):
         domain = [("company_id", "=", self.company.id)]
-        if not self._is_manager():
+        if not self.user.brew_has_headquarters_scope(self.company):
+            domain += [("factory_id", "in", self.user.brew_allowed_factories(self.company).ids)]
+        if not self._is_manager() and not self.user.has_group("craft_brew_core.group_brew_brewery_manager"):
             domain += [("salesperson_id", "=", self.user.id)]
         return domain
 
@@ -89,7 +94,7 @@ class DemandService:
             "name": demand.name,
             "factory_id": str(demand.factory_id.id) if demand.factory_id else None,
             "salesperson": {"id": str(demand.salesperson_id.id), "name": demand.salesperson_id.name},
-            "customer": {"id": str(demand.customer_id.id), "name": demand.customer_id.display_name},
+            "customer": {"id": str(demand.customer_id.id), "name": demand.customer_id.display_name} if demand.customer_id else None,
             "product": {"id": str(demand.product_tmpl_id.id), "name": demand.product_tmpl_id.name},
             "packaging": {"id": str(demand.packaging_id.id), "name": demand.packaging_id.name} if demand.packaging_id else None,
             "packaging_method": method,
@@ -104,6 +109,10 @@ class DemandService:
             "notes": demand.notes,
             "state": demand.state,
             "decision_reason": demand.decision_reason,
+            "can_close": can_close(self.user) and not bool(demand.deleted_at),
+            "deleted_at": demand.deleted_at.isoformat() if demand.deleted_at else None,
+            "closed_at": demand.closed_at.isoformat() if demand.closed_at else None,
+            "closed_by": demand.closed_by_id.name or None,
             "submitted_at": demand.submitted_at.isoformat() if demand.submitted_at else None,
             "confirmed_at": demand.confirmed_at.isoformat() if demand.confirmed_at else None,
             "version": demand.write_date.isoformat() if demand.write_date else None,
@@ -111,7 +120,7 @@ class DemandService:
 
     def list(self, page, page_size, state=None, keyword=""):
         model = self.env["brew.product.demand"].sudo()
-        domain = self._domain()
+        domain = self._domain() + [("deleted_at", "=", False)]
         if state:
             domain += [("state", "=", state)]
         if keyword:
@@ -127,7 +136,7 @@ class DemandService:
         product = self.env["product.template"].sudo().search(
             [("id", "=", int(payload.get("product_tmpl_id") or 0)), ("company_id", "=", self.company.id), ("brew_item_type", "=", "finished_product"), ("active", "=", True)], limit=1
         )
-        if not customer or not product:
+        if (payload.get("customer_id") and not customer) or not product:
             raise ApiError("DATA_SCOPE_DENIED", "客户或产品不属于当前企业或已停用。", 403)
         packaging_id = payload.get("packaging_id")
         packaging = self.env["product.packaging"].sudo().search(
@@ -141,13 +150,18 @@ class DemandService:
         ) if factory_id else self.env["brew.factory"]
         if factory_id and not factory:
             raise ApiError("DATA_SCOPE_DENIED", "厂区不属于当前企业或已停用。", 403)
+        if not self.user.brew_has_headquarters_scope(self.company):
+            allowed = self.user.brew_allowed_factories(self.company)
+            factory = factory or allowed[:1]
+            if not factory or factory not in allowed:
+                raise ApiError("DATA_SCOPE_DENIED", "需求只能归属于本厂区。", 403)
+        if factory_id and not factory:
+            raise ApiError("DATA_SCOPE_DENIED", "厂区不属于当前企业或已停用。", 403)
         return customer, product, packaging, factory
 
     def _packaging_values(self, payload, packaging):
         method = payload.get("packaging_method")
-        if method is None:
-            return {}
-        if method not in {"keg", "box", "other"}:
+        if method not in {None, False, "", "keg", "box", "other"}:
             raise ApiError("VALIDATION_FORMAT", "包装方式无效。", 422)
         try:
             quantity = float(payload.get("package_qty") or 0)
@@ -158,25 +172,26 @@ class DemandService:
             raise ApiError("VALIDATION_FORMAT", "包装数量或容量格式无效。", 422) from exc
         if not all(math.isfinite(value) for value in (quantity, volume_l, unit_l, units_per_box_raw)):
             raise ApiError("VALIDATION_FORMAT", "包装数量或容量格式无效。", 422)
-        if quantity <= 0 or not quantity.is_integer() or volume_l <= 0:
-            raise ApiError("VALIDATION_RANGE", "包装数量须为正整数，所需酒液须大于零。", 422)
-        if not units_per_box_raw.is_integer():
-            raise ApiError("VALIDATION_RANGE", "每箱数量须为整数。", 422)
+        if quantity < 0 or not quantity.is_integer() or volume_l <= 0:
+            raise ApiError("VALIDATION_RANGE", "包装数量须为非负整数，所需酒液须大于零。", 422)
+        if unit_l < 0 or units_per_box_raw < 0 or not units_per_box_raw.is_integer():
+            raise ApiError("VALIDATION_RANGE", "包装容量不能为负，每箱数量须为非负整数。", 422)
         units_per_box = int(units_per_box_raw)
+        if not method:
+            if packaging or quantity or unit_l or units_per_box or payload.get("package_container_type") or payload.get("packaging_description"):
+                raise ApiError("VALIDATION_REQUIRED", "填写包装要求时请先选择包装方式。", 422)
+            return {"packaging_method": False, "package_container_type": False, "package_unit_volume_l": 0,
+                    "package_units_per_box": 0, "packaging_description": False}
         if method == "other":
             description = str(payload.get("packaging_description") or "").strip()
-            if not description:
-                raise ApiError("VALIDATION_REQUIRED", "请填写其他包装的说明。", 422)
             if packaging:
                 raise ApiError("VALIDATION_FORMAT", "其他包装不应选择预设规格。", 422)
             return {"packaging_method": method, "package_container_type": False, "package_unit_volume_l": 0,
                     "package_units_per_box": 0, "packaging_description": description}
-        if unit_l <= 0:
-            raise ApiError("VALIDATION_RANGE", "请填写单桶或单瓶容量。", 422)
         if method == "box":
-            container = payload.get("package_container_type")
-            if container not in {"bottle", "can"} or units_per_box <= 0:
-                raise ApiError("VALIDATION_REQUIRED", "箱装需要选择瓶/罐类型和每箱数量。", 422)
+            container = payload.get("package_container_type") or False
+            if container not in {False, "bottle", "can"}:
+                raise ApiError("VALIDATION_FORMAT", "包装类型无效。", 422)
         else:
             container = False
             units_per_box = 0
@@ -200,7 +215,7 @@ class DemandService:
                 "company_id": self.company.id,
                 "factory_id": factory.id or False,
                 "salesperson_id": self.user.id,
-                "customer_id": customer.id,
+                "customer_id": customer.id or False,
                 "product_tmpl_id": product.id,
                 "packaging_id": packaging.id or False,
                 **self._packaging_values(payload, packaging),
@@ -213,16 +228,27 @@ class DemandService:
         )
         return demand, self.serialize(demand)
 
+    def create_customer(self, payload):
+        self._ensure_sales()
+        name = str(payload.get("name") or "").strip()
+        phone = str(payload.get("phone") or "").strip()
+        if not name or len(name) > 100 or len(phone) > 100:
+            raise ApiError("VALIDATION_REQUIRED", "请填写不超过 100 字的客户名称，电话也不能超过 100 字。", 422)
+        if self.env["res.partner"].sudo().with_context(active_test=False).search_count([("company_id", "=", self.company.id), ("name", "=ilike", name)]):
+            raise ApiError("VALIDATION_DUPLICATE", "当前企业已存在同名客户或供应商，请先选择已有客户。", 422)
+        customer = self.env["res.partner"].sudo().create({"name": name, "phone": phone, "company_id": self.company.id, "customer_rank": 1})
+        return customer, {"id": str(customer.id), "name": customer.name}
+
     def update(self, demand_id, payload):
         self._ensure_sales()
         demand = self._record(demand_id)
         self._check_version(demand, payload.get("version"))
         values = {key: payload[key] for key in {"package_qty", "requested_volume_l", "requested_delivery_date", "customer_reference", "notes"} if key in payload}
-        if any(key in payload for key in {"customer_id", "product_tmpl_id", "packaging_id", "factory_id", "packaging_method"}):
-            merged = {"customer_id": demand.customer_id.id, "product_tmpl_id": demand.product_tmpl_id.id, "packaging_id": demand.packaging_id.id, "factory_id": demand.factory_id.id, **payload}
+        if any(key in payload for key in {"customer_id", "product_tmpl_id", "packaging_id", "factory_id", "packaging_method", "package_container_type", "package_unit_volume_l", "package_units_per_box", "packaging_description", "package_qty", "requested_volume_l"}):
+            merged = {"customer_id": demand.customer_id.id, "product_tmpl_id": demand.product_tmpl_id.id, "packaging_id": demand.packaging_id.id, "factory_id": demand.factory_id.id, "packaging_method": demand.packaging_method, "package_container_type": demand.package_container_type, "package_unit_volume_l": demand.package_unit_volume_l, "package_units_per_box": demand.package_units_per_box, "packaging_description": demand.packaging_description, "package_qty": demand.package_qty, "requested_volume_l": demand.requested_volume_l, **payload}
             customer, product, packaging, factory = self._relations(merged)
             values.update({"customer_id": customer.id, "product_tmpl_id": product.id, "packaging_id": packaging.id or False, "factory_id": factory.id or False})
-            values.update(self._packaging_values({"package_qty": demand.package_qty, "requested_volume_l": demand.requested_volume_l, **merged}, packaging))
+            values.update(self._packaging_values(merged, packaging))
         if not values:
             raise ApiError("VALIDATION_REQUIRED", "没有可更新的字段。", 422)
         demand.write(values)
@@ -230,7 +256,36 @@ class DemandService:
 
     def action(self, demand_id, action, payload):
         demand = self._record(demand_id)
+        self.env.cr.execute("SELECT id FROM brew_product_demand WHERE id = %s FOR UPDATE", [demand.id])
+        demand.invalidate_recordset()
         self._check_version(demand, payload.get("version"))
+        if demand.deleted_at:
+            raise ApiError("STATE_PRECONDITION_FAILED", "产品需求已删除。", 409)
+        if action in {"cancel", "delete"} and (can_close(self.user) or action == "delete" or demand.state == "planned"):
+            require_close(self.user)
+            reason = str(payload.get("reason") or "").strip()
+            if not reason:
+                raise ApiError("VALIDATION_REQUIRED", "请填写取消或删除原因。", 422)
+            if action == "cancel" and demand.state == "cancelled":
+                raise ApiError("STATE_PRECONDITION_FAILED", "产品需求已取消。", 409)
+            from .planning import PlanningService
+            with self.env.cr.savepoint():
+                plans = self.env['brew.production.plan'].sudo().search([
+                    ('company_id', '=', self.company.id), ('demand_id', '=', demand.id),
+                    ('state', 'not in', ['cancelled', 'terminated'])], order='id')
+                service = PlanningService(self.env, self.user, self.company)
+                for plan in plans:
+                    service._record(plan.id)
+                    self.env.cr.execute("SELECT id FROM brew_production_plan WHERE id = %s FOR UPDATE", [plan.id])
+                    plan.invalidate_recordset()
+                    if plan.state not in {'cancelled', 'terminated'}:
+                        close_plan(self.env, plan, self.user, '需求关闭：' + reason)
+                values = {'state':'cancelled', 'decision_reason':reason, 'closed_at':fields.Datetime.now(), 'closed_by_id':self.user.id}
+                if action == 'delete':
+                    values.update(deleted_at=fields.Datetime.now(), deleted_by_id=self.user.id)
+                demand.with_context(brew_state_transition=True).write(values)
+                self._complete_review_tasks(demand, "需求已取消：" + reason)
+            return demand, self.serialize(demand)
         if action == "submit":
             self._ensure_sales()
             demand.action_submit()

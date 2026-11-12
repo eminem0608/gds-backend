@@ -46,7 +46,7 @@ class MasterDataController(BrewApiController):
                     request_id=request_id,
                 )
             payload = self._json_body()
-            service.ensure_write_access(resource)
+            service.ensure_write_access(resource, create=True)
             idem, replay = self._start_idempotency(user, company, payload)
             if replay:
                 return replay
@@ -87,6 +87,20 @@ class MasterDataController(BrewApiController):
                 summary={"resource": resource, "record_id": record.id},
             )
             return self._complete_idempotency(idem, data)
+        except Exception as exc:
+            return self._error_response(exc, request_id)
+
+    @http.route("/api/v1/materials/<int:record_id>/image", type="http", auth="public", methods=["GET"], csrf=False)
+    def material_image(self, record_id):
+        request_id = self._request_id()
+        try:
+            _user, _company, service = self._master_context()
+            content, mimetype = service.material_image(record_id)
+            return request.make_response(content, headers=[
+                ("Content-Type", mimetype),
+                ("Cache-Control", "private, max-age=300"),
+                ("X-Request-ID", request_id),
+            ])
         except Exception as exc:
             return self._error_response(exc, request_id)
 

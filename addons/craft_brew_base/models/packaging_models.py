@@ -7,6 +7,7 @@ class ProductTemplate(models.Model):
     brew_packaging_state = fields.Selection([('draft','草稿'),('submitted','待确认'),('confirmed','已确认'),('returned','需修改')], string='包装商品状态', index=True)
     brew_packaging_review_note = fields.Text('确认意见')
     brew_packaging_parent_id = fields.Many2one('product.template', string='关联酒厂材料', check_company=True, ondelete='restrict')
+    brew_packaging_catalog_owner_id = fields.Many2one('res.partner', string='供应商商品目录归属', check_company=True, index=True, copy=False)
 
 class MaterialCategory(models.Model):
     _inherit = 'brew.material.category'

@@ -2,6 +2,7 @@ import logging
 import uuid
 
 from odoo.http import Controller, request
+from odoo.exceptions import ValidationError
 
 
 _logger = logging.getLogger(__name__)
@@ -56,6 +57,8 @@ class BrewApiController(Controller):
                 error={"code": error.code, "message": error.message, "details": error.details},
                 request_id=request_id,
             )
+        if isinstance(error, ValidationError):
+            return self._response(status=422, error={"code": "VALIDATION_ERROR", "message": str(error), "details": {}}, request_id=request_id)
         request_id = request_id or self._request_id()
         _logger.exception("Unhandled API error request_id=%s", request_id)
         return self._response(

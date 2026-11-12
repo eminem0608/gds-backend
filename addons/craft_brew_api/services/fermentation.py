@@ -4,10 +4,12 @@ from odoo import Command, fields
 
 from ..controllers.base import ApiError
 from .inventory import InventoryService
+from .tank_context import tank_plan, tank_stage, task_measurements, tank_measurements
 
 
 FERMENTATION_GROUPS = {
     "craft_brew_core.group_brew_general_manager",
+                "craft_brew_core.group_brew_brewery_manager",
     "craft_brew_core.group_brew_production_director",
     "craft_brew_core.group_brew_operator",
     "craft_brew_core.group_brew_warehouse",
@@ -87,7 +89,15 @@ class FermentationService:
             if session
             else self.env["brew.production.anomaly"]
         )
+        plan = tank_plan(self.env, tank)
+        stage, label = tank_stage(self.env, tank, plan)
+        metrics = tank_measurements(self.env, tank, plan)
         return {
+            "stage": stage, "stage_label": label, "latest_metrics": metrics,
+            "plan_id": str(plan.id) if plan else None,
+            "planned_product": plan.product_tmpl_id.name if plan else None,
+            "plan_name": plan.name if plan else None,
+            "batch_name": plan.batch_id.name if plan and "batch_id" in plan._fields and plan.batch_id else None,
             "id": str(tank.id),
             "name": tank.name,
             "factory": {"id": str(tank.factory_id.id), "name": tank.factory_id.name},
@@ -98,11 +108,9 @@ class FermentationService:
             "current_product": tank.current_product,
             "current_batch_no": tank.current_batch_no,
             "current_volume_l": tank.current_volume_l,
-            "current_temperature": (
-                reading.temperature_c if reading else tank.current_temperature
-            ),
-            "current_pressure": reading.pressure_bar if reading else tank.current_pressure,
-            "current_gravity": reading.gravity_plato if reading else tank.current_gravity,
+            "current_temperature": metrics.get('temperature', {}).get('value'),
+            "current_pressure": metrics.get('pressure', {}).get('value'),
+            "current_gravity": metrics.get('gravity', {}).get('value'),
             "session_id": str(session.id) if session else None,
             "session_state": session.state if session else None,
             "open_anomaly_count": len(anomalies),
@@ -147,6 +155,53 @@ class FermentationService:
         session = self._session_for_tank(tank)
         if session:
             data["session"] = self._serialize_session(session, True)
+        plan = tank_plan(self.env, tank)
+        stage, label = tank_stage(self.env, tank, plan)
+        data.update({"stage": stage, "stage_label": label, "production": None, "production_error": None,
+                     "latest_metrics": tank_measurements(self.env, tank, plan), "packaging_orders": [], "history": []})
+        if plan:
+            from .planning import PlanningService
+            try:
+                data['production'] = PlanningService(self.env, self.user, self.company).progress(plan.id)
+            except ApiError as exc:
+                data['production_error'] = str(exc)
+            if data['production']:
+                data['latest_metrics'] = task_measurements(self.env, plan)
+                batch = self.env['brew.production.batch'].sudo().search([('production_plan_id', '=', plan.id)], limit=1)
+                if batch:
+                    orders = self.env['brew.packaging.order'].sudo().search([('company_id', '=', self.company.id), ('batch_id', '=', batch.id)], order='id desc')
+                    data['packaging_orders'] = [{'id': str(o.id), 'name': o.name, 'state': o.state,
+                        'packaging': o.packaging_id.name, 'planned_volume_l': o.planned_volume_l,
+                        'output_volume_l': o.output_volume_l, 'output_qty': o.output_qty,
+                        'released_at': o.released_at.isoformat() if o.released_at else None} for o in orders]
+        data['latest_metrics'] = tank_measurements(self.env, tank, plan)
+        history_model = self.env['brew.production.batch'].sudo()
+        history_domain = [('company_id', '=', self.company.id), ('tank_id', '=', tank.id), ('state', '=', 'completed')]
+        if self.user.has_group('craft_brew_core.group_brew_operator') and not any(self.user.has_group(group) for group in [
+            'craft_brew_core.group_brew_admin', 'craft_brew_core.group_brew_general_manager', 'craft_brew_core.group_brew_production_director',
+            'craft_brew_core.group_brew_brewery_manager']):
+            history_domain += ['|', ('production_plan_id.mash_owner_id', '=', self.user.id),
+                               ('production_plan_id.fermentation_owner_id', '=', self.user.id)]
+        # Lifetime totals use the full permitted history, independently of the recent rows shown below.
+        totals = history_model.read_group(history_domain, ['actual_volume_l:sum'], [])
+        history = history_model.search(history_domain + [('completed_at', '!=', False)], order='completed_at desc,id desc', limit=6)
+        if len(history) < 6:
+            history |= history_model.search(history_domain + [('completed_at', '=', False)], order='id desc', limit=6 - len(history))
+        data['history_summary'] = {
+            'completed_batches': history_model.search_count(history_domain),
+            'actual_volume_l': totals[0].get('actual_volume_l', 0.0) if totals else 0.0,
+            'last_completed_at': history[0].completed_at.isoformat() if history and history[0].completed_at else None,
+        }
+        data['history'] = [{'id': str(b.id), 'name': b.name, 'product': b.product_tmpl_id.name, 'volume_l': b.actual_volume_l,
+            'completed_at': b.completed_at.isoformat() if b.completed_at else None, 'plan_id': str(b.production_plan_id.id)} for b in history]
+        from .stock_browser import StockBrowserService
+        raw_rows = StockBrowserService(self.env, self.user, self.company, enforce_access=False).production_liquids({
+            'factory_id': tank.factory_id.id, '_plan_ids': history_model.search(history_domain).mapped('production_plan_id').ids})
+        data['location_checks'] = [{'batch_name': r['batch_name'], 'plan_id': r['plan_id'],
+                                   'product': r['product']['name'], 'volume_l': r['volume_l']}
+                                  for r in raw_rows if not r['tank_verified']]
+        if data['location_checks'] and data['stage'] == 'empty':
+            data.update(stage='location_pending', stage_label='原液待核对')
         return data
 
     def tank_timeline(self, tank_id):

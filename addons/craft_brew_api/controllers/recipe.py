@@ -39,11 +39,11 @@ class RecipeController(BrewApiController):
         except Exception as exc:
             return self._error_response(exc, request_id)
 
-    @http.route("/api/v1/recipes/<int:recipe_id>", type="http", auth="public", methods=["GET", "PATCH"], csrf=False)
+    @http.route("/api/v1/recipes/<int:recipe_id>", type="http", auth="public", methods=["GET", "PATCH", "DELETE"], csrf=False)
     def recipe(self, recipe_id):
         request_id = self._request_id()
         try:
-            mutation = request.httprequest.method == "PATCH"
+            mutation = request.httprequest.method != "GET"
             user, company, service = self._recipe_context(mutation)
             if not mutation:
                 return self._response(service.serialize_recipe(service._recipe(recipe_id)), request_id=request_id)
@@ -51,6 +51,11 @@ class RecipeController(BrewApiController):
             idem, replay = self._start_idempotency(user, company, payload)
             if replay:
                 return replay
+            if request.httprequest.method == "DELETE":
+                service.delete_recipe(recipe_id, payload)
+                data = {"id": str(recipe_id)}
+                self._audit("recipe", "delete", request_id, user=user, company=company, summary={"recipe_id": recipe_id})
+                return self._complete_idempotency(idem, data)
             recipe, data = service.update_recipe(recipe_id, payload)
             self._audit("recipe", "update", request_id, user=user, company=company, summary={"recipe_id": recipe.id})
             return self._complete_idempotency(idem, data)

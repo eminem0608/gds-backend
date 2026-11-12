@@ -1,4 +1,5 @@
 import json
+import math
 
 from odoo import api, fields, models
 from odoo.exceptions import ValidationError
@@ -21,6 +22,7 @@ MATERIAL_CATEGORIES = [
 
 LOCATION_TYPES = [
     ("raw_material", "原料"),
+    ("material_issue", "领料"),
     ("packaging", "包装物"),
     ("qc", "待检"),
     ("semi_finished", "半成品"),
@@ -62,6 +64,18 @@ class ProductTemplate(models.Model):
     brew_supplier_quantity = fields.Float("供应商商品数量")
     brew_alpha_acid = fields.Float("Alpha酸(%)")
     brew_flavor_desc = fields.Text("风味描述")
+    brew_beta_acid = fields.Float("β酸(%)")
+    brew_cohumulone_pct = fields.Float("合葎草酮(%)")
+    brew_total_oil_ml_100g = fields.Float("总油(mL/100g)")
+    brew_attenuation_min = fields.Float("最低发酵度(%)")
+    brew_attenuation_max = fields.Float("最高发酵度(%)")
+    brew_fermentation_temp_min = fields.Float("最低发酵温度(℃)")
+    brew_fermentation_temp_max = fields.Float("最高发酵温度(℃)")
+    brew_flocculation = fields.Char("絮凝程度")
+    brew_alcohol_tolerance_pct = fields.Float("耐醇度(%)")
+    brew_product_model = fields.Char("英文名称/型号")
+    brew_hop_type = fields.Char("酒花用途")
+    brew_yeast_style = fields.Char("酵母风格")
     # 麦芽/可发酵物供应商检测与批次信息（均为选填）
     brew_moisture_pct = fields.Float("水分(%)")
     brew_total_protein_pct = fields.Float("总蛋白(%)")
@@ -112,6 +126,18 @@ class ProductTemplate(models.Model):
         ),
     ]
 
+    @api.constrains("brew_beta_acid", "brew_cohumulone_pct", "brew_total_oil_ml_100g", "brew_attenuation_min", "brew_attenuation_max", "brew_fermentation_temp_min", "brew_fermentation_temp_max", "brew_alcohol_tolerance_pct")
+    def _check_brew_product_parameters(self):
+        percentages = ["brew_beta_acid", "brew_cohumulone_pct", "brew_attenuation_min", "brew_attenuation_max", "brew_alcohol_tolerance_pct"]
+        for product in self:
+            for name in percentages + ["brew_total_oil_ml_100g", "brew_fermentation_temp_min", "brew_fermentation_temp_max"]:
+                value = product[name]
+                if not math.isfinite(value) or (name in percentages and not 0 <= value <= 100) or (name == "brew_total_oil_ml_100g" and value < 0):
+                    raise ValidationError("原料参数格式或范围不正确，百分比须在 0–100 之间。")
+            for low, high in [("brew_attenuation_min", "brew_attenuation_max"), ("brew_fermentation_temp_min", "brew_fermentation_temp_max")]:
+                if product[low] and product[high] and product[low] > product[high]:
+                    raise ValidationError("原料参数下限不能大于上限。")
+
     @api.constrains("brew_item_type", "brew_material_category")
     def _check_brew_material_category(self):
         for product in self:
@@ -158,18 +184,7 @@ class BrewMaterialCategory(models.Model):
 
     name = fields.Char("名称", required=True)
     code = fields.Char("编码", required=True, index=True)
-    material_group = fields.Selection(
-        [
-            ("malt", "麦芽"),
-            ("hop", "啤酒花"),
-            ("yeast", "酵母"),
-            ("adjunct", "其他可发酵物"),
-            ("packaging", "包装材料"),
-        ],
-        string="原料大类",
-        required=True,
-        index=True,
-    )
+    material_group = fields.Char("原料大类标识", required=True, index=True)
     parent_id = fields.Many2one("brew.material.category", string="上级种类", ondelete="restrict")
     sequence = fields.Integer("排序", default=10)
     active = fields.Boolean("启用", default=True)
@@ -202,6 +217,7 @@ class StockWarehouse(models.Model):
     brew_warehouse_type = fields.Selection(
         [
             ("raw_material", "原料仓"),
+            ("material_issue", "领料库"),
             ("packaging", "包装物仓"),
             ("semi_finished", "半成品仓"),
             ("finished", "成品仓"),
@@ -223,7 +239,7 @@ class StockWarehouse(models.Model):
 
     def write(self, values):
         result = super().write(values)
-        if "brew_factory_id" in values:
+        if "brew_factory_id" in values or "brew_warehouse_type" in values:
             self._sync_brew_factory_locations()
         return result
 
@@ -234,6 +250,11 @@ class StockWarehouse(models.Model):
                 [("id", "child_of", warehouse.view_location_id.id)]
             )
             locations.write({"brew_factory_id": warehouse.brew_factory_id.id})
+            warehouse.lot_stock_id.write({"brew_location_type": "semi_finished" if warehouse.brew_warehouse_type == "tank" else warehouse.brew_warehouse_type})
+            if warehouse.brew_warehouse_type == "material_issue" and not location_model.search_count([("location_id", "=", warehouse.lot_stock_id.id), ("usage", "=", "internal")]):
+                location_model.create({"name": "领料暂存区", "location_id": warehouse.lot_stock_id.id,
+                    "usage": "internal", "company_id": warehouse.company_id.id,
+                    "brew_factory_id": warehouse.brew_factory_id.id, "brew_location_type": "material_issue"})
 
 
 class StockLocation(models.Model):

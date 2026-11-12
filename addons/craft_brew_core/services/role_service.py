@@ -16,6 +16,7 @@ ROLE_DEFINITIONS = {
             "report.all.read",
             "report.all.export",
             "base.beer_category.manage",
+            "admin.user.view",
         },
     },
     "production_director": {
@@ -34,9 +35,41 @@ ROLE_DEFINITIONS = {
             "production.anomaly.manage",
             "base.equipment.manage",
             "base.product.manage",
+            "purchase.requisition.manage",
             "purchase.requisition.approve",
             "trace.production.read",
             "report.production.read",
+        },
+    },
+    "headquarters_planner": {
+        "xml_id": "craft_brew_core.group_brew_headquarters_planner",
+        "label": "总部生产计划",
+        "default_page": "production",
+        "permissions": {
+            "demand.product.manage_own",
+            "demand.product.confirm",
+            "plan.production.read",
+        },
+    },
+    "brewery_manager": {
+        "xml_id": "craft_brew_core.group_brew_brewery_manager",
+        "label": "酒厂负责人",
+        "default_page": "dashboard",
+        "permissions": {
+            "dashboard.overview.read",
+            "dashboard.tanks.read",
+            "dashboard.plans.read",
+            "dashboard.inventory.read",
+            "plan.production.read",
+            "inventory.stock.read",
+            "inventory.stock.adjust",
+            "base.location.manage",
+            "base.warehouse.manage",
+            "admin.user.manage_local",
+            "admin.user.view",
+            "purchase.order.read",
+            "report.production.read",
+            "report.purchase.read",
         },
     },
     "brewer": {
@@ -64,10 +97,11 @@ ROLE_DEFINITIONS = {
     "warehouse_keeper": {
         "xml_id": "craft_brew_core.group_brew_warehouse",
         "label": "库管",
-        "default_page": "inventory",
+        "default_page": "tasks",
         "permissions": {
             "dashboard.inventory.read",
             "inventory.stock.read",
+            "inventory.stock.adjust",
             "inventory.receipt.manage",
             "inventory.quality.manage",
             "inventory.requisition.manage",
@@ -76,13 +110,12 @@ ROLE_DEFINITIONS = {
             "inventory.finished_goods.receive",
             "inventory.outbound.confirm",
             "trace.inventory.read",
-            "base.location.manage",
         },
     },
     "purchaser": {
         "xml_id": "craft_brew_core.group_brew_purchase",
         "label": "采购",
-        "default_page": "inventory",
+        "default_page": "tasks",
         "permissions": {
             "purchase.requisition.read",
             "purchase.order.manage",
@@ -136,6 +169,12 @@ ROLE_DEFINITIONS = {
             "demand.product.confirm",
             "admin.audit.read",
             "admin.integration.monitor",
+            "inventory.stock.adjust",
+            "recipe.version.manage",
+            "demand.product.manage_own",
+            "plan.production.read",
+            "plan.production.manage",
+            "purchase.requisition.manage",
         },
     },
     "supplier": {
@@ -150,28 +189,28 @@ ROLE_DEFINITIONS = {
 
 
 MENU_DEFINITIONS = (
-    ("dashboard", "总数据看板", {"general_manager"}),
+    ("dashboard", "总数据看板", {"general_manager", "brewery_manager"}),
     (
         "factory",
         "酒厂",
-        {"general_manager", "production_director", "operator", "warehouse_keeper"},
+        {"general_manager", "production_director", "operator", "warehouse_keeper", "brewery_manager"},
     ),
-    ("production", "生产管理", {"general_manager", "production_director", "operator", "salesperson"}),
+    ("production", "生产管理", {"general_manager", "production_director", "headquarters_planner", "operator", "salesperson", "brewery_manager", "tenant_admin"}),
     ("recipe", "配方工艺", {"general_manager", "production_director", "brewer", "tenant_admin"}),
     (
         "inventory",
         "库存采购",
-        {"general_manager", "production_director", "warehouse_keeper", "purchaser", "finance"},
+        {"general_manager", "production_director", "warehouse_keeper", "purchaser", "finance", "brewery_manager", "tenant_admin"},
     ),
     (
         "trace",
-        "物流追溯",
-        {"general_manager", "production_director", "warehouse_keeper", "purchaser", "salesperson"},
+        "产品追溯",
+        {"general_manager", "production_director", "warehouse_keeper", "purchaser", "salesperson", "tenant_admin", "brewery_manager"},
     ),
     (
         "reports",
-        "报表分析",
-        {"general_manager", "production_director", "warehouse_keeper", "purchaser", "salesperson", "finance"},
+        "报表导出",
+        {"general_manager", "production_director", "warehouse_keeper", "purchaser", "salesperson", "finance", "brewery_manager"},
     ),
     (
         "settings",
@@ -181,6 +220,7 @@ MENU_DEFINITIONS = (
             "production_director",
             "warehouse_keeper",
             "purchaser",
+            "brewery_manager",
             "salesperson",
             "tenant_admin",
         },
@@ -191,6 +231,7 @@ MENU_DEFINITIONS = (
         {
             "general_manager",
             "production_director",
+            "headquarters_planner",
             "operator",
             "warehouse_keeper",
             "purchaser",
@@ -199,13 +240,32 @@ MENU_DEFINITIONS = (
             "tenant_admin",
         },
     ),
-    ("supplier_catalog", "供应商商品", {"supplier"}),
+    (
+        "supplier_catalog",
+        "供应商商品",
+        {
+            "general_manager",
+            "production_director",
+            "headquarters_planner",
+            "brewery_manager",
+            "brewer",
+            "operator",
+            "warehouse_keeper",
+            "purchaser",
+            "salesperson",
+            "finance",
+            "tenant_admin",
+            "supplier",
+        },
+    ),
 )
 
 
 ROLE_PRIORITY = (
     "general_manager",
     "production_director",
+    "headquarters_planner",
+    "brewery_manager",
     "brewer",
     "operator",
     "warehouse_keeper",

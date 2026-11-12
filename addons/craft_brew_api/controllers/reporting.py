@@ -44,6 +44,34 @@ class ReportingController(BrewApiController):
         except Exception as exc:
             return self._error_response(exc, request_id)
 
+    @http.route("/api/v1/reports/catalog", type="http", auth="public", methods=["GET"], csrf=False)
+    def report_catalog(self):
+        request_id = self._request_id()
+        try:
+            from ..services.report_data import ReportDataService
+            user, company, _session, _mode = self._authenticate()
+            return self._response(ReportDataService(request.env, user, company).catalog(), request_id=request_id)
+        except Exception as exc:
+            return self._error_response(exc, request_id)
+
+    @http.route(["/api/v1/reports/data/<string:code>", "/api/v1/reports/data/<string:code>/download"], type="http", auth="public", methods=["GET"], csrf=False)
+    def report_data(self, code):
+        request_id = self._request_id()
+        try:
+            from urllib.parse import quote
+            from ..services.report_data import ReportDataService
+            user, company, _session, _mode = self._authenticate()
+            service = ReportDataService(request.env, user, company)
+            filters = {key: request.httprequest.args.get(key) for key in ['factory_id','keyword','date_from','date_to']}
+            if request.httprequest.path.endswith('/download'):
+                title, content = service.csv(code, filters)
+                return request.make_response(content, headers=[('Content-Type','text/csv; charset=utf-8'),
+                    ('Content-Disposition', "attachment; filename*=UTF-8''" + quote(title + '.csv')), ('Cache-Control','no-store')])
+            page, size = self._reporting_paging()
+            return self._response(service.data(code, filters, page, size), request_id=request_id)
+        except Exception as exc:
+            return self._error_response(exc, request_id)
+
     @http.route("/api/v1/exports", type="http", auth="public", methods=["GET", "POST"], csrf=False)
     def exports(self):
         request_id = self._request_id()

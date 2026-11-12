@@ -44,7 +44,7 @@ class BrewStockDocumentMixin(models.AbstractModel):
         source_reference,
         picking=None,
     ):
-        base_quantity = uom._compute_quantity(quantity, product.uom_id)
+        base_quantity = uom._compute_quantity(quantity, product.uom_id, round=False)
         if base_quantity <= 0:
             raise ValidationError("库存移动数量必须大于零。")
         if source_location.usage == "internal":
@@ -112,6 +112,8 @@ class StockLot(models.Model):
     brew_freeze_reason = fields.Text()
     brew_source_model = fields.Char(index=True)
     brew_source_id = fields.Integer(index=True)
+    brew_manual_packaging_id = fields.Many2one("product.packaging", ondelete="restrict")
+    brew_manual_package_count = fields.Integer(default=0)
 
     def action_freeze(self, reason):
         if not str(reason or "").strip():
@@ -231,7 +233,7 @@ class BrewInventoryReservation(models.Model):
     def _compute_quantity_base(self):
         for record in self:
             record.quantity_base = (
-                record.uom_id._compute_quantity(record.quantity, record.product_id.uom_id)
+                record.uom_id._compute_quantity(record.quantity, record.product_id.uom_id, round=False)
                 if record.uom_id and record.product_id
                 else 0
             )
@@ -285,6 +287,8 @@ class BrewInventoryTransfer(models.Model):
         for transfer in self:
             if transfer.source_location_id == transfer.destination_location_id: raise ValidationError("来源和目标库位不能相同。")
             if transfer.source_location_id.brew_factory_id != transfer.factory_id or transfer.destination_location_id.brew_factory_id != transfer.factory_id: raise ValidationError("调拨库位必须属于所选厂区。")
+            if "material_issue" in (transfer.source_location_id.brew_location_type, transfer.destination_location_id.brew_location_type):
+                raise ValidationError("领料库物料请通过领料单办理发料或退料。")
 
     def action_confirm(self):
         self.ensure_one()
@@ -368,22 +372,28 @@ class BrewInventoryCount(models.Model):
         self.ensure_one()
         if self.state != "draft":
             raise ValidationError("只有草稿盘点单可以开始。")
-        active = self.search_count(
-            [
-                ("id", "!=", self.id),
-                ("state", "in", ["counting", "pending_approval"]),
-                ("location_id", "child_of", self.location_id.id),
-            ]
-        )
+        # Serialize starts within the same factory, including overlapping parent scopes.
+        self.env.cr.execute("SELECT id FROM brew_factory WHERE id = %s FOR UPDATE", [self.factory_id.id])
+        active_counts = self.search([
+            ('id', '!=', self.id), ('company_id', '=', self.company_id.id),
+            ('factory_id', '=', self.factory_id.id), ('state', 'in', ['counting', 'pending_approval'])])
+        descendants = self.env['stock.location'].search([('id', 'child_of', self.location_id.id)]).ids
+        active = any(count.location_id.id in descendants or
+                     self.location_id.id in self.env['stock.location'].search([('id', 'child_of', count.location_id.id)]).ids
+                     for count in active_counts)
         if active:
             raise ValidationError("该库位范围已有进行中的盘点单。")
         quants = self.env["stock.quant"].search(
             [
                 ("company_id", "=", self.company_id.id),
                 ("location_id", "child_of", self.location_id.id),
+                ("location_id.usage", "=", "internal"),
+                ("location_id.brew_factory_id", "=", self.factory_id.id),
                 ("quantity", "!=", 0),
             ]
         )
+        if not quants:
+            raise ValidationError("所选库位及其子库位没有账面库存，请选择有库存的库位。")
         totals = {}
         for quant in quants:
             key = (quant.location_id.id, quant.product_id.id, quant.lot_id.id or False)

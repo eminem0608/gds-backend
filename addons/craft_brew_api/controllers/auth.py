@@ -38,9 +38,7 @@ class AuthController(BrewApiController):
                 raise ApiError("DATA_SCOPE_DENIED", "无权访问所选企业。", 403)
 
             factory_id = payload.get("factory_id")
-            factories = user.brew_factory_ids.filtered(
-                lambda item: item.active and item.company_id == company
-            )
+            factories = user.brew_allowed_factories(company)
             factory = factories.filtered(lambda item: str(item.id) == str(factory_id))[:1]
             if factory_id is not None and not factory:
                 raise ApiError("DATA_SCOPE_DENIED", "无权访问所选厂区。", 403)
@@ -147,9 +145,7 @@ class AuthController(BrewApiController):
             company = user.company_ids.filtered(lambda item: str(item.id) == str(payload.get("company_id")))[:1]
             if not company:
                 raise ApiError("DATA_SCOPE_DENIED", "无权访问所选企业。", 403)
-            factories = user.brew_factory_ids.filtered(
-                lambda item: item.active and item.company_id == company
-            )
+            factories = user.brew_allowed_factories(company)
             factory = user.brew_default_factory_id
             if factory not in factories:
                 factory = factories[:1]
@@ -186,7 +182,7 @@ class AuthController(BrewApiController):
             payload = self._json_body()
             user, company, api_session, auth_mode = self._authenticate()
             self._validate_cookie_csrf(auth_mode)
-            factory = user.brew_factory_ids.filtered(
+            factory = user.brew_allowed_factories(company).filtered(
                 lambda item: item.active
                 and item.company_id == company
                 and str(item.id) == str(payload.get("factory_id"))

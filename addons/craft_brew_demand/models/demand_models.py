@@ -8,6 +8,11 @@ class BrewProductDemand(models.Model):
     _order = "requested_delivery_date, id"
     _check_company_auto = True
 
+    deleted_at = fields.Datetime(readonly=True, copy=False, index=True)
+    deleted_by_id = fields.Many2one("res.users", readonly=True, copy=False)
+    closed_at = fields.Datetime(readonly=True, copy=False)
+    closed_by_id = fields.Many2one("res.users", readonly=True, copy=False)
+
     name = fields.Char(required=True, default="New", copy=False, index=True)
     company_id = fields.Many2one(
         "res.company", required=True, default=lambda self: self.env.company, index=True
@@ -18,7 +23,6 @@ class BrewProductDemand(models.Model):
     )
     customer_id = fields.Many2one(
         "res.partner",
-        required=True,
         check_company=True,
         domain="[('customer_rank', '>', 0)]",
         index=True,
@@ -44,7 +48,7 @@ class BrewProductDemand(models.Model):
     package_unit_volume_l = fields.Float("单桶或单瓶容量(L)")
     package_units_per_box = fields.Integer("每箱数量")
     packaging_description = fields.Char("其他包装说明")
-    package_qty = fields.Float(required=True, default=1.0)
+    package_qty = fields.Float(default=0.0)
     requested_volume_l = fields.Float(required=True)
     requested_delivery_date = fields.Date(required=True, index=True)
     customer_reference = fields.Char()
@@ -69,7 +73,7 @@ class BrewProductDemand(models.Model):
 
     _sql_constraints = [
         ("company_name_unique", "unique(company_id, name)", "需求单号必须唯一。"),
-        ("package_qty_positive", "check(package_qty > 0)", "包装数量必须大于零。"),
+        ("package_qty_non_negative", "check(package_qty >= 0)", "包装数量不能小于零。"),
         ("requested_volume_positive", "check(requested_volume_l > 0)", "需求酒液体积必须大于零。"),
     ]
 

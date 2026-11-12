@@ -1,7 +1,7 @@
 {
     "name": "Craft Brew Purchase and Quality",
     "summary": "Shortage requisitions, standard purchase orders, receipts and incoming quality.",
-    "version": "17.0.4.0.0",
+    "version": "17.0.6.0.0",
     "category": "Purchase",
     "author": "Craft Brew",
     "license": "LGPL-3",

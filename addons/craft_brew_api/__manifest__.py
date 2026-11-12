@@ -6,7 +6,7 @@
     "author": "Craft Brew",
     "license": "LGPL-3",
     "depends": ["craft_brew_core", "craft_brew_base", "craft_brew_recipe", "craft_brew_demand", "craft_brew_workflow", "craft_brew_planning", "craft_brew_inventory", "craft_brew_purchase", "craft_brew_production", "craft_brew_fermentation", "craft_brew_trace", "craft_brew_reporting"],
-    "data": [],
+    "data": ["security/ir.model.access.csv", "security/water_source_rules.xml", "data/stock_dispatch_cron.xml"],
     "application": False,
     "installable": True,
 }

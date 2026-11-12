@@ -44,3 +44,7 @@ logs/
 # Environment variables
 .env
 .env.local
+.env.demo
+
+# Local database backups
+backups/

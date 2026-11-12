@@ -219,6 +219,7 @@ class ResUsers(models.Model):
         result = super().write(values)
         if not self.env.context.get("skip_brew_role_sync") and {
             "brew_organization_id",
+            "brew_is_organization_manager",
             "brew_direct_role_codes",
         }.intersection(values):
             self._sync_brew_security_groups()
@@ -275,6 +276,12 @@ class ResUsers(models.Model):
                     lambda item: bool(item.organization_ids & ancestors)
                 ).mapped("code")
             )
+        if (
+            self.brew_is_organization_manager
+            and self.brew_organization_id
+            and self.brew_organization_id.organization_type == "factory"
+        ):
+            effective.add("brewery_manager")
         return [code for code in ROLE_DEFINITIONS if code in effective]
 
     def brew_role_payloads(self):

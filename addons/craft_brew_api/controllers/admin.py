@@ -10,10 +10,11 @@ from odoo.addons.craft_brew_core.services.role_service import (
 )
 
 from .base import ApiError, BrewApiController
+from ..services.account_access import AccountAccess
 
 
 class AdminController(BrewApiController):
-    def _managed_user_domain(self, company):
+    def _managed_user_domain(self, company, actor):
         system_user_ids = [
             user.id
             for xml_id in (
@@ -24,27 +25,36 @@ class AdminController(BrewApiController):
             )
             if (user := request.env.ref(xml_id, raise_if_not_found=False))
         ]
-        return [
-            ("company_ids", "in", [company.id]),
-            ("id", "not in", system_user_ids),
-        ]
+        domain = [("company_ids", "in", [company.id]), ("id", "not in", system_user_ids)]
+        access = AccountAccess(request.env, actor, company)
+        if not access.headquarters:
+            candidates = request.env['res.users'].sudo().with_context(active_test=False).search(domain)
+            domain.append(('id', 'in', access.visible_users(candidates).ids))
+        return domain
 
-    def _managed_users(self, company):
+    def _managed_users(self, company, actor):
         return request.env["res.users"].sudo().with_context(active_test=False).search(
-            self._managed_user_domain(company)
+            self._managed_user_domain(company, actor)
         )
 
-    def _admin_context(self, mutation=False):
+    def _admin_context(self, mutation=False, global_only=False):
         user, company, session, auth_mode = self._authenticate()
-        self._require_group(user, "craft_brew_core.group_brew_admin")
+        AccountAccess(request.env, user, company).require(mutation=mutation, global_only=global_only)
         if mutation:
             self._validate_cookie_csrf(auth_mode)
         return user, company, session
 
-    def _serialize_user(self, user):
+    def _serialize_user(self, user, actor, company):
+        access = AccountAccess(request.env, actor, company)
+        factory = access.home_factory(user)
         direct_codes = user.brew_direct_role_code_list()
         effective_codes = user.brew_role_codes()
         return {
+            "home_factory_id": str(factory.id) if factory else None,
+            "home_factory_name": factory.name if factory else None,
+            "scope_kind": "headquarters" if user.brew_has_headquarters_scope(company) else "factory",
+            "can_manage": access.manageable(user),
+            "scope_factory_ids": [str(f.id) for f in user.brew_allowed_factories(company)],
             "id": str(user.id),
             "name": user.name,
             "login": user.login,
@@ -78,7 +88,7 @@ class AdminController(BrewApiController):
             root = model.create(
                 {
                     "company_id": company.id,
-                    "name": company.name,
+                    "name": "总部" if company.name in {"My Company", "MyCompany"} else company.name,
                     "code": f"ORG-{company.id}",
                     "organization_type": "company",
                     "sequence": 1,
@@ -159,6 +169,11 @@ class AdminController(BrewApiController):
     def _serialize_organization(self, organization, user_counts=None, role_names=None):
         user_counts = user_counts or {}
         role_names = role_names or {}
+        node = organization
+        factory = organization.factory_id
+        while node and not factory:
+            node = node.parent_id
+            factory = node.factory_id if node else factory
         return {
             "id": str(organization.id),
             "name": organization.name,
@@ -166,6 +181,7 @@ class AdminController(BrewApiController):
             "parent_id": str(organization.parent_id.id) if organization.parent_id else None,
             "path": organization.display_name,
             "type": organization.organization_type,
+            "factory_id": str(factory.id) if factory else None,
             "address": organization.address or "",
             "sequence": organization.sequence,
             "active": organization.active,
@@ -177,7 +193,8 @@ class AdminController(BrewApiController):
     def _role_configurations(self, company):
         return request.env["brew.role.configuration"].ensure_company_roles(company)
 
-    def _serialize_role(self, role, users):
+    def _serialize_role(self, role, users, actor, company):
+        organizations = role.organization_ids & AccountAccess(request.env, actor, company).organizations()
         direct_users = users.filtered(lambda item: role.code in item.brew_direct_role_code_list())
         effective_users = users.filtered(lambda item: role.code in item.brew_role_codes())
         return {
@@ -189,17 +206,17 @@ class AdminController(BrewApiController):
             "default_page": ROLE_DEFINITIONS[role.code]["default_page"],
             "permissions": sorted(ROLE_DEFINITIONS[role.code]["permissions"]),
             "menu_codes": role.menu_codes if role.menu_codes is not None else menu_codes_for_role(role.code),
-            "organization_ids": [str(item.id) for item in role.organization_ids],
-            "organization_names": role.organization_ids.mapped("name"),
+            "organization_ids": [str(item.id) for item in organizations],
+            "organization_names": organizations.mapped("name"),
             "direct_user_ids": [str(item.id) for item in direct_users],
             "direct_user_names": direct_users.mapped("name"),
             "effective_user_count": len(effective_users),
             "version": role.write_date.isoformat() if role.write_date else None,
         }
 
-    def _user_in_company(self, user_id, company):
+    def _user_in_company(self, user_id, company, actor):
         user = request.env["res.users"].sudo().search(
-            [("id", "=", int(user_id)), *self._managed_user_domain(company)], limit=1
+            [("id", "=", int(user_id)), *self._managed_user_domain(company, actor)], limit=1
         )
         if not user:
             raise ApiError("RESOURCE_NOT_FOUND", "用户不存在。", 404)
@@ -222,15 +239,25 @@ class AdminController(BrewApiController):
             raise ApiError("VALIDATION_FORMAT", "存在未知角色编码。", 422, {"role_codes": invalid})
         return [request.env.ref(ROLE_DEFINITIONS[code]["xml_id"]).id for code in role_codes]
 
+    @http.route("/api/v1/admin/context", type="http", auth="public", methods=["GET"], csrf=False)
+    def account_context(self):
+        request_id = self._request_id()
+        try:
+            actor, company, _session = self._admin_context()
+            self._role_configurations(company)
+            return self._response(AccountAccess(request.env, actor, company).context(), request_id=request_id)
+        except Exception as exc:
+            return self._error_response(exc, request_id)
+
     @http.route("/api/v1/admin/roles", type="http", auth="public", methods=["GET"], csrf=False)
     def roles(self):
         request_id = self._request_id()
         try:
-            _actor, company, _session = self._admin_context()
+            actor, company, _session = self._admin_context()
             roles = self._role_configurations(company)
-            users = self._managed_users(company)
+            users = self._managed_users(company, actor)
             return self._response(
-                [self._serialize_role(role, users) for role in roles],
+                [self._serialize_role(role, users, actor, company) for role in roles],
                 meta={
                     "menus": [
                         {"code": code, "label": label}
@@ -247,7 +274,7 @@ class AdminController(BrewApiController):
         request_id = self._request_id()
         try:
             payload = self._json_body()
-            actor, company, _session = self._admin_context(mutation=True)
+            actor, company, _session = self._admin_context(mutation=True, global_only=True)
             roles = self._role_configurations(company)
             role = roles.filtered(lambda item: item.code == role_code)[:1]
             if not role:
@@ -283,7 +310,7 @@ class AdminController(BrewApiController):
                 return replay
             if values:
                 role.write(values)
-            users = self._managed_users(company)
+            users = self._managed_users(company, actor)
             if "direct_user_ids" in payload:
                 requested_ids = {int(item) for item in payload.get("direct_user_ids") or []}
                 if set(users.filtered(lambda item: item.id in requested_ids).ids) != requested_ids:
@@ -298,7 +325,7 @@ class AdminController(BrewApiController):
                         direct_codes.discard(role.code)
                     user.write({"brew_direct_role_codes": sorted(direct_codes)})
             users._sync_brew_security_groups()
-            result = self._serialize_role(role, users)
+            result = self._serialize_role(role, users, actor, company)
             self._audit("role", "update", request_id, user=actor, company=company, summary={"role_code": role.code})
             return self._complete_idempotency(idem, result)
         except Exception as exc:
@@ -308,9 +335,12 @@ class AdminController(BrewApiController):
     def organizations(self):
         request_id = self._request_id()
         try:
-            _actor, company, _session = self._admin_context()
-            organizations = self._ensure_organizations(company)
-            users = self._managed_users(company)
+            actor, company, _session = self._admin_context()
+            access = AccountAccess(request.env, actor, company)
+            if access.can_configure:
+                self._ensure_organizations(company)
+            organizations = access.organizations()
+            users = self._managed_users(company, actor)
             user_counts = {
                 organization.id: len(users.filtered(lambda item: item.brew_organization_id == organization))
                 for organization in organizations
@@ -349,6 +379,7 @@ class AdminController(BrewApiController):
             ) if parent_id else request.env["brew.organization"]
             if parent_id and not parent:
                 raise ApiError("DATA_SCOPE_DENIED", "上级组织不存在。", 403)
+            AccountAccess(request.env, actor, company).validate_organization(None, parent=parent, creating=True, new_type=organization_type)
             idem, replay = self._start_idempotency(actor, company, payload)
             if replay:
                 return replay
@@ -425,6 +456,7 @@ class AdminController(BrewApiController):
                 if parent_id and not parent:
                     raise ApiError("DATA_SCOPE_DENIED", "上级组织不存在。", 403)
                 values["parent_id"] = parent.id if parent else False
+            AccountAccess(request.env, actor, company).validate_organization(organization, parent=parent if 'parent_id' in payload else None, new_type=values.get('organization_type'))
             idem, replay = self._start_idempotency(actor, company, payload)
             if replay:
                 return replay
@@ -440,18 +472,18 @@ class AdminController(BrewApiController):
     def users(self, **_kwargs):
         request_id = self._request_id()
         try:
-            _actor, company, _session = self._admin_context()
+            actor, company, _session = self._admin_context()
             page = max(int(request.httprequest.args.get("page", 1)), 1)
             page_size = min(max(int(request.httprequest.args.get("page_size", 20)), 1), 100)
             keyword = request.httprequest.args.get("keyword", "").strip()
-            domain = self._managed_user_domain(company)
+            domain = self._managed_user_domain(company, actor)
             if keyword:
                 domain += ["|", ("name", "ilike", keyword), ("login", "ilike", keyword)]
             model = request.env["res.users"].sudo().with_context(active_test=False)
             total = model.search_count(domain)
             records = model.search(domain, offset=(page - 1) * page_size, limit=page_size, order="name,id")
             return self._response(
-                [self._serialize_user(item) for item in records],
+                [self._serialize_user(item, actor, company) for item in records],
                 meta={"page": page, "page_size": page_size, "total": total, "has_more": page * page_size < total},
                 request_id=request_id,
             )
@@ -478,6 +510,7 @@ class AdminController(BrewApiController):
             ) if organization_id else request.env["brew.organization"]
             if organization_id and not organization:
                 raise ApiError("DATA_SCOPE_DENIED", "所属组织不存在。", 403)
+            scope_values = AccountAccess(request.env, actor, company).user_values(payload, organization=organization)
             supplier_id = payload.get("supplier_id")
             supplier = request.env["res.partner"].sudo().search(
                 [("id", "=", int(supplier_id or 0)), ("company_id", "=", company.id), ("supplier_rank", ">", 0)], limit=1
@@ -501,10 +534,11 @@ class AdminController(BrewApiController):
                     "brew_job_title": str(payload.get("job_title") or "").strip(),
                     "brew_is_organization_manager": bool(payload.get("is_organization_manager")),
                     "brew_direct_role_codes": list(dict.fromkeys(payload.get("role_codes") or [])),
+                    **scope_values,
                 }
             )
             user._sync_brew_security_groups()
-            result = self._serialize_user(user)
+            result = self._serialize_user(user, actor, company)
             self._audit("user", "create", request_id, user=actor, company=company, summary={"target_user_id": user.id})
             return self._complete_idempotency(idem, result, 201)
         except Exception as exc:
@@ -514,8 +548,8 @@ class AdminController(BrewApiController):
     def user_detail(self, user_id):
         request_id = self._request_id()
         try:
-            _actor, company, _session = self._admin_context()
-            return self._response(self._serialize_user(self._user_in_company(user_id, company)), request_id=request_id)
+            actor, company, _session = self._admin_context()
+            return self._response(self._serialize_user(self._user_in_company(user_id, company, actor), actor, company), request_id=request_id)
         except Exception as exc:
             return self._error_response(exc, request_id)
 
@@ -525,7 +559,8 @@ class AdminController(BrewApiController):
         try:
             payload = self._json_body()
             actor, company, _session = self._admin_context(mutation=True)
-            target = self._user_in_company(user_id, company)
+            target = self._user_in_company(user_id, company, actor)
+            AccountAccess(request.env, actor, company).require_target(target)
             self._check_version(target, payload)
             values = {}
             if "name" in payload:
@@ -566,13 +601,19 @@ class AdminController(BrewApiController):
                 if supplier_id and not supplier:
                     raise ApiError("DATA_SCOPE_DENIED", "关联供应商不存在。", 403)
                 values["brew_supplier_id"] = supplier.id if supplier else False
+            access = AccountAccess(request.env, actor, company)
+            if "role_codes" in payload:
+                self._role_group_ids(payload.get("role_codes") or [])
+                values["brew_direct_role_codes"] = list(dict.fromkeys(payload.get("role_codes") or []))
+            selected_organization = request.env['brew.organization'].sudo().browse(values['brew_organization_id']) if 'brew_organization_id' in values else target.brew_organization_id
+            values.update(access.user_values(payload, target=target, organization=selected_organization))
             if not values:
                 raise ApiError("VALIDATION_REQUIRED", "没有可更新的字段。", 422)
             idem, replay = self._start_idempotency(actor, company, payload)
             if replay:
                 return replay
             target.write(values)
-            result = self._serialize_user(target)
+            result = self._serialize_user(target, actor, company)
             self._audit(
                 "user",
                 "update",
@@ -591,11 +632,13 @@ class AdminController(BrewApiController):
         try:
             payload = self._json_body()
             actor, company, _session = self._admin_context(mutation=True)
-            target = self._user_in_company(user_id, company)
+            target = self._user_in_company(user_id, company, actor)
+            AccountAccess(request.env, actor, company).require_target(target)
             self._check_version(target, payload)
+            AccountAccess(request.env, actor, company).validate_roles(payload.get("role_codes") or [])
             role_codes = list(dict.fromkeys(payload.get("role_codes") or []))
             role_ids = set(self._role_group_ids(role_codes))
-            if target == actor and "tenant_admin" not in role_codes:
+            if target == actor and "tenant_admin" in target.brew_direct_role_code_list() and "tenant_admin" not in role_codes:
                 raise ApiError("STATE_ACTION_NOT_ALLOWED", "不能移除当前账号的系统管理员角色。", 422)
             if "supplier" in role_codes and not target.brew_supplier_id:
                 raise ApiError("VALIDATION_REQUIRED", "供应商账号必须绑定供应商主体。", 422)
@@ -614,7 +657,7 @@ class AdminController(BrewApiController):
                 }
             )
             target._sync_brew_security_groups()
-            result = self._serialize_user(target)
+            result = self._serialize_user(target, actor, company)
             self._audit("user", "assign_roles", request_id, user=actor, company=company, summary={"target_user_id": target.id, "role_codes": payload.get("role_codes") or []})
             return self._complete_idempotency(idem, result)
         except Exception as exc:
@@ -626,29 +669,16 @@ class AdminController(BrewApiController):
         try:
             payload = self._json_body()
             actor, company, _session = self._admin_context(mutation=True)
-            target = self._user_in_company(user_id, company)
+            target = self._user_in_company(user_id, company, actor)
+            AccountAccess(request.env, actor, company).require_target(target)
             self._check_version(target, payload)
-            requested_ids = {int(item) for item in payload.get("factory_ids") or []}
-            factories = request.env["brew.factory"].sudo().search(
-                [("id", "in", list(requested_ids)), ("company_id", "=", company.id)]
-            )
-            if set(factories.ids) != requested_ids:
-                raise ApiError("DATA_SCOPE_DENIED", "存在不属于当前企业的厂区。", 403)
-            retained = target.brew_factory_ids.filtered(lambda item: item.company_id != company)
-            all_factories = retained | factories
-            default_factory_id = payload.get("default_factory_id")
-            if default_factory_id and int(default_factory_id) not in factories.ids:
-                raise ApiError("VALIDATION_FORMAT", "默认厂区必须在本次授权范围内。", 422)
+            values = AccountAccess(request.env, actor, company).user_values(payload, target=target)
             idem, replay = self._start_idempotency(actor, company, payload)
             if replay:
                 return replay
-            target.write(
-                {
-                    "brew_factory_ids": [Command.set(all_factories.ids)],
-                    "brew_default_factory_id": int(default_factory_id) if default_factory_id else False,
-                }
-            )
-            result = self._serialize_user(target)
+            target.write(values)
+            factories = target.brew_factory_ids.filtered(lambda item: item.company_id == company)
+            result = self._serialize_user(target, actor, company)
             self._audit("user", "assign_data_scopes", request_id, user=actor, company=company, summary={"target_user_id": target.id, "factory_ids": factories.ids})
             return self._complete_idempotency(idem, result)
         except Exception as exc:
@@ -664,13 +694,14 @@ class AdminController(BrewApiController):
                 raise ApiError("RESOURCE_NOT_FOUND", "操作不存在。", 404)
             if action == "disable" and actor.id == user_id:
                 raise ApiError("STATE_ACTION_NOT_ALLOWED", "不能停用当前登录账号。", 422)
-            target = self._user_in_company(user_id, company)
+            target = self._user_in_company(user_id, company, actor)
+            AccountAccess(request.env, actor, company).require_target(target)
             self._check_version(target, payload)
             idem, replay = self._start_idempotency(actor, company, payload)
             if replay:
                 return replay
             target.write({"active": action == "enable"})
-            result = self._serialize_user(target)
+            result = self._serialize_user(target, actor, company)
             self._audit("user", action, request_id, user=actor, company=company, summary={"target_user_id": target.id})
             return self._complete_idempotency(idem, result)
         except Exception as exc:
@@ -688,7 +719,8 @@ class AdminController(BrewApiController):
         try:
             payload = self._json_body()
             actor, company, _session = self._admin_context(mutation=True)
-            target = self._user_in_company(user_id, company)
+            target = self._user_in_company(user_id, company, actor)
+            AccountAccess(request.env, actor, company).require_target(target)
             password = str(payload.get("password") or "")
             if len(password) < 8:
                 raise ApiError("VALIDATION_FORMAT", "新密码至少 8 位。", 422)
@@ -719,7 +751,7 @@ class AdminController(BrewApiController):
     def audit_logs(self):
         request_id = self._request_id()
         try:
-            _actor, company, _session = self._admin_context()
+            actor, company, _session = self._admin_context()
             page = max(int(request.httprequest.args.get("page", 1)), 1)
             page_size = min(max(int(request.httprequest.args.get("page_size", 20)), 1), 100)
             model = request.env["brew.audit.log"].sudo()

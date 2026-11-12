@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+    <!-- Brewing recipes include gram and sub-gram quantities stored in kg. -->
+    <function model="uom.uom" name="write">
+        <value eval="[ref('uom.product_uom_kgm')]"/>
+        <value eval="{'rounding': 0.000001}"/>
+    </function>
+    <function model="decimal.precision" name="write">
+        <value eval="[ref('product.decimal_product_uom')]"/>
+        <value eval="{'digits': 6}"/>
+    </function>
+</odoo>

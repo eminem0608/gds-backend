@@ -2,6 +2,7 @@ import json
 
 from odoo import api, fields, models
 from odoo.exceptions import ValidationError
+from .execution_design import batch_design, node_values
 
 
 class BrewApprovalInstance(models.Model):
@@ -179,9 +180,6 @@ class BrewTask(models.Model):
             checkpoints = json.loads(self.execution_checkpoints_json or "[]")
         except (TypeError, ValueError):
             checkpoints = []
-        if checkpoints:
-            return checkpoints
-
         plan = self.env["brew.production.plan"].sudo().search(
             [("id", "=", self.target_id), ("company_id", "=", self.company_id.id)], limit=1
         )
@@ -189,19 +187,37 @@ class BrewTask(models.Model):
             return []
         try:
             snapshot = json.loads(plan.recipe_snapshot_json or "{}")
-            design = snapshot.get("design") or {}
+            design = batch_design(snapshot, plan.planned_volume_l)
             mash = design.get("mash") or {}
             hops = design.get("hops") or []
             boil_minutes = max(float(mash.get("boil_time_min") or 0), 0)
         except (TypeError, ValueError, AttributeError):
             design, hops, boil_minutes = {}, [], 0
 
+        if checkpoints:
+            self.env.cr.execute("SELECT id FROM brew_task WHERE id = %s FOR UPDATE", [self.id])
+            self.invalidate_recordset(["execution_checkpoints_json"])
+            checkpoints = json.loads(self.execution_checkpoints_json or "[]")
+            changed = False
+            for node in checkpoints:
+                if node.get("state") == "done":
+                    continue
+                patch = node_values(node.get("code", ""), design)
+                if any(node.get(key) != value for key, value in patch.items()):
+                    if "quantity" in patch and node.get("quantity") != patch["quantity"]:
+                        node.setdefault("original_planned_quantity", node.get("quantity"))
+                    node.update(patch)
+                    changed = True
+            if changed:
+                self.write({"execution_checkpoints_json": json.dumps(checkpoints, ensure_ascii=False)})
+            return checkpoints
         nodes = []
         mash = design.get("mash") or {}
         workflow = mash.get("workflow") or {}
-        operations = workflow.get("operations") or {}
+        operations = {} if workflow.get("execution_mode") == "standard" else workflow.get("operations") or {}
+        manual = workflow.get("execution_mode") == "manual"
         steps = mash.get("steps") or []
-        iodine_enabled = workflow.get("iodine_check_required", True) is not False
+        iodine_enabled = not manual and workflow.get("iodine_check_required", True) is not False
         iodine_after = int(workflow.get("iodine_after_step", 4))
         sparge_count = max(1, min(int(float(mash.get("sparge_count") or 1)), 10))
         sparge_waters = mash.get("sparge_water_liters") or []
@@ -240,7 +256,7 @@ class BrewTask(models.Model):
         }
 
         def add(code, title, phase, **extra):
-            nodes.append({"code": code, "title": title, "phase": phase, "state": "pending", "completed_at": None, "completed_by": None, **extra})
+            nodes.append({"code": code, "title": title, "phase": phase, "state": "pending", "completed_at": None, "completed_by": None, **extra, **node_values(code, design)})
 
         def add_operations(stage, phase, before_filter_end=False):
             rows = operations.get(stage, standard.get(stage, []))
@@ -263,11 +279,16 @@ class BrewTask(models.Model):
                 elif code == "cooling_target":
                     cooling_temperature = float(workflow.get("cooling_temperature_c") or 18)
                     target = f"按目标温度 {cooling_temperature:g}℃冷却，达到后确认。"
+                water_enabled = bool((design.get('water_adjustment') or {}).get('enabled'))
+                if code == 'mash_in' and water_enabled:
+                    add('water_mash','糖化水水质调节','mash',input_mode='water',required=True,target='按本批水源快照与投加方案调节糖化水，记录实际投加量。')
                 add(code, operation.get("name") or "未命名操作", phase,
                     input_mode=operation.get("input_mode", "confirm"), target=target,
-                    unit=operation.get("unit", ""),
+                    unit=operation.get("unit") or (target if operation.get("input_mode") == "number" else ""),
                     choices=[item.strip() for item in str(operation.get("target") or "").split("/") if item.strip()] if operation.get("input_mode") == "choice" else [],
                     required=operation.get("required", True))
+                if code == 'prepare_sparge_water' and water_enabled and sum(float(v or 0) for v in sparge_waters)>0:
+                    add('water_sparge','洗糟水水质调节','sparge',input_mode='water',required=True,parallel_after='prepare_sparge_water',target='按本批方案调节洗糟水，实际完成后记录。')
                 if stage == "boil" and code == "boil_start":
                     add_timed_hops()
                 if stage == "boil" and code == "boil_end":
@@ -308,8 +329,9 @@ class BrewTask(models.Model):
                     add(f"wp_hop_{index}", f"回旋沉淀投入酒花：{hop.get('name') or '配方酒花'}", "whirlpool",
                         input_mode="confirm", quantity=hop.get("quantity"), unit="g", required=True)
 
-        add_operations("materials", "materials")
-        add_operations("water_mash", "mash")
+        if not manual:
+            add_operations("materials", "materials")
+            add_operations("water_mash", "mash")
         if iodine_enabled and iodine_after == 0:
             add("iodine_check", "碘反应检查", "mash", input_mode="choice", choices=["合格", "不合格"], target="合格后继续；不合格时处理后复检。", required=True)
         for index, rest in enumerate(steps):
@@ -328,6 +350,10 @@ class BrewTask(models.Model):
                 add("iodine_check", "碘反应检查", "mash", input_mode="choice", choices=["合格", "不合格"], target="合格后继续下一温度段；不合格时处理后复检。", required=True)
         if iodine_enabled and iodine_after > len(steps):
             add("iodine_check", "碘反应检查", "mash", input_mode="choice", choices=["合格", "不合格"], target="合格后继续；不合格时处理后复检。", required=True)
+        if manual:
+            add_operations("manual", "mash")
+            self.write({"execution_checkpoints_json": json.dumps(nodes, ensure_ascii=False)})
+            return nodes
         add_operations("lautering", "lautering")
         add_operations("sparge", "sparge")
         for index in range(sparge_count):
@@ -354,7 +380,7 @@ class BrewTask(models.Model):
 
     def action_start(self, user):
         self.ensure_one()
-        assigned_production = self.target_model == "brew.production.plan" and self.task_type in {"mashing", "fermentation"}
+        assigned_production = self.target_model == "brew.production.plan" and self.task_type in {"mashing", "fermentation", "packaging"}
         if self.assignee_id != user or (self.state != "claimed" and not (assigned_production and self.state == "pending")):
             raise ValidationError("只有任务处理人可以开始任务。")
         self.write({"state": "in_progress", "started_at": fields.Datetime.now()})
@@ -362,7 +388,7 @@ class BrewTask(models.Model):
 
     def action_submit(self, user, comment=None):
         self.ensure_one()
-        if self.state not in {"claimed", "in_progress"} or self.assignee_id != user:
+        if self.state not in {"claimed", "in_progress"} or (self.assignee_id != user and not (self.task_type == "fermentation" and user.has_group("craft_brew_core.group_brew_admin"))):
             raise ValidationError("只有任务处理人可以提交任务。")
         self.write({"state": "done", "completed_at": fields.Datetime.now(), "last_comment": comment})
         return True

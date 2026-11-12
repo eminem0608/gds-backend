@@ -1,7 +1,7 @@
 {
     "name": "Craft Brew Recipe",
     "summary": "Versioned recipes, material formulas and configurable process steps.",
-    "version": "17.0.1.1.0",
+    "version": "17.0.1.3.0",
     "category": "Manufacturing",
     "author": "Craft Brew",
     "license": "LGPL-3",

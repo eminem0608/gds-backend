@@ -1,4 +1,5 @@
 import json
+from datetime import datetime
 
 from odoo import api, fields, models
 from odoo.exceptions import ValidationError
@@ -9,6 +10,11 @@ class BrewProductionPlan(models.Model):
     _description = "Craft Brew Production Plan"
     _order = "planned_start, id"
     _check_company_auto = True
+
+    deleted_at = fields.Datetime(readonly=True, copy=False, index=True)
+    deleted_by_id = fields.Many2one("res.users", readonly=True, copy=False)
+    closed_at = fields.Datetime(readonly=True, copy=False)
+    closed_by_id = fields.Many2one("res.users", readonly=True, copy=False)
 
     name = fields.Char(required=True, default="New", copy=False, index=True)
     company_id = fields.Many2one("res.company", required=True, default=lambda self: self.env.company, index=True)
@@ -24,6 +30,8 @@ class BrewProductionPlan(models.Model):
     owner_id = fields.Many2one("res.users", check_company=True, index=True)
     mash_owner_id = fields.Many2one("res.users", check_company=True, index=True)
     fermentation_owner_id = fields.Many2one("res.users", check_company=True, index=True)
+    packaging_owner_id = fields.Many2one("res.users", check_company=True, index=True)
+    packaging_plan_json = fields.Text(default="{}", copy=False)
     state = fields.Selection(
         [("draft", "草稿"), ("checked", "已校验"), ("stocking", "备货中"), ("pending_approval", "待审批"), ("approved", "已批准"), ("dispatched", "已下发"), ("in_progress", "执行中"), ("done", "已完成"), ("cancelled", "已取消"), ("terminated", "已终止")],
         required=True, default="draft", index=True,
@@ -36,6 +44,7 @@ class BrewProductionPlan(models.Model):
     approval_instance_id = fields.Many2one("brew.approval.instance", check_company=True)
     dispatched_at = fields.Datetime()
     cancel_reason = fields.Text()
+    brewing_completion_json = fields.Text(default="{}", readonly=True, copy=False)
 
     _sql_constraints = [
         ("company_name_unique", "unique(company_id, name)", "生产计划号必须唯一。"),
@@ -83,6 +92,9 @@ class BrewProductionPlan(models.Model):
         if self.state not in {"draft", "checked"}:
             raise ValidationError("只有草稿或已校验计划可以重新校验资源。")
         conflicts = []
+        if self.tank_id.current_volume_l > 0 or self.tank_id.current_production_batch_id or self.tank_id.status != 'empty':
+            conflicts.append({"type": "tank_occupancy", "id": str(self.tank_id.id), "name": self.tank_id.name,
+                              "reason": f"酒罐不是空罐，当前在罐 {self.tank_id.current_volume_l:g} L，请先出酒或更换空罐"})
         plan_domain = [
             ("id", "!=", self.id),
             ("state", "not in", ["cancelled", "terminated", "done"]),
@@ -183,22 +195,45 @@ class BrewProductionPlan(models.Model):
     def ensure_execution_tasks(self):
         self.ensure_one()
         tasks = self.env["brew.task"].sudo()
-        for task_type, label, role, assignee in [
+        specifications = [
             ("mashing", "糖化执行", "operator", self.mash_owner_id.id),
             ("fermentation", "发酵执行", "operator", self.fermentation_owner_id.id),
             ("material_preparation", "备料", "warehouse_keeper", False),
-        ]:
-            existing = tasks.search([("target_model", "=", self._name), ("target_id", "=", self.id), ("task_type", "=", task_type), ("state", "!=", "cancelled")], limit=1)
+        ]
+        packaging = json.loads(self.packaging_plan_json or "{}")
+        if packaging and self.packaging_owner_id:
+            specifications.append(("packaging", "包装执行", "operator", self.packaging_owner_id.id))
+        for task_type, label, role, assignee in specifications:
+            existing = tasks.search([("target_model", "=", self._name), ("target_id", "=", self.id), ("task_type", "=", task_type), ("state", "!=", "cancelled")], order="id desc", limit=1)
+            if task_type == "packaging" and existing.state == "done" and not packaging.get("execution"):
+                existing = tasks.browse()
             if not existing:
                 existing = tasks.create({"name": f"{self.name} {label}", "task_type": task_type, "role_code": role, "assignee_id": assignee, "company_id": self.company_id.id, "factory_id": self.factory_id.id, "target_model": self._name, "target_id": self.id, "due_at": self.planned_start})
+            if task_type == "packaging" and existing.state in {"pending", "claimed"}:
+                existing.write({"assignee_id": assignee, "due_at": datetime.fromisoformat(packaging["planned_start"]) if packaging.get("planned_start") else self.planned_end})
             if task_type == "mashing":
                 existing.mash_execution_checkpoints()
         return True
+
+    def _close_material_reservations(self):
+        self.ensure_one()
+        self.env.cr.execute("SELECT id FROM brew_production_plan WHERE id = %s FOR UPDATE", [self.id])
+        records = self.env["brew.material.requisition"].sudo().search([("production_plan_id", "=", self.id), ("state", "!=", "cancelled")]) if "brew.material.requisition" in self.env else None
+        if records and any(record.state in {"issued", "acknowledged"} for record in records):
+            raise ValidationError("本批还有未结清的领料，请先收回未确认的发料，或登记已实领原料的退料、耗用与损耗，再关闭计划。")
+        if "brew.inventory.reservation" in self.env:
+            reservations = self.env["brew.inventory.reservation"].sudo().search([("state", "=", "active"), ("source_model", "=", self._name), ("source_id", "=", self.id)])
+            if records:
+                reservations |= self.env["brew.inventory.reservation"].sudo().search([("state", "=", "active"), ("source_model", "=", "brew.material.requisition"), ("source_id", "in", records.ids)])
+            reservations.action_release()
+        if records:
+            records.filtered(lambda record: record.state in {"draft", "recommended", "overage_pending"}).write({"state": "cancelled"})
 
     def action_cancel(self, reason):
         self.ensure_one()
         if self.state in {"in_progress", "done", "cancelled", "terminated"} or not str(reason or "").strip():
             raise ValidationError("当前计划不能取消，或未填写原因。")
+        self._close_material_reservations()
         self.env["brew.task"].search([("target_model", "=", self._name), ("target_id", "=", self.id), ("state", "not in", ["done", "cancelled"])]).write({"state": "cancelled"})
         self.with_context(brew_state_transition=True).write({"state": "cancelled", "cancel_reason": reason})
         return True
@@ -207,6 +242,7 @@ class BrewProductionPlan(models.Model):
         self.ensure_one()
         if self.state not in {"dispatched", "in_progress"} or not str(reason or "").strip():
             raise ValidationError("只有已下发或执行中计划可以终止，且必须填写原因。")
+        self._close_material_reservations()
         self.env["brew.task"].search([("target_model", "=", self._name), ("target_id", "=", self.id), ("state", "not in", ["done", "cancelled"])]).write({"state": "cancelled"})
         self.with_context(brew_state_transition=True).write({"state": "terminated", "cancel_reason": reason})
         return True

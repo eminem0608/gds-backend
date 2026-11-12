@@ -1,5 +1,6 @@
 from odoo import http
 from odoo.http import request
+from odoo.exceptions import ValidationError
 
 from ..services.production import ProductionService
 from .base import ApiError, BrewApiController
@@ -64,6 +65,8 @@ class ProductionController(BrewApiController):
                 "acknowledge",
                 "return",
                 "complete",
+                "settle",
+                "undo-issue",
             }
             if action not in allowed:
                 raise ApiError("RESOURCE_NOT_FOUND", "领料动作不存在。", 404)
@@ -78,6 +81,8 @@ class ProductionController(BrewApiController):
                 record, data = service.requisition_action(record_id, action, payload)
             self._audit("material_requisition", action, request_id, user, company, {"id": record.id})
             return self._complete_idempotency(idem, data)
+        except ValidationError as exc:
+            return self._error_response(ApiError("VALIDATION_ERROR", str(exc), 422), request_id)
         except Exception as exc:
             return self._error_response(exc, request_id)
 

@@ -1,3 +1,9 @@
+import base64
+import binascii
+import math
+from io import BytesIO
+
+from PIL import Image, UnidentifiedImageError
 from odoo import fields
 
 from ..controllers.base import ApiError
@@ -31,14 +37,14 @@ RESOURCE_CONFIG = {
     },
     "warehouses": {
         "model": "stock.warehouse",
-        "write_groups": ["craft_brew_core.group_brew_admin"],
+        "write_groups": ["craft_brew_core.group_brew_admin", "craft_brew_core.group_brew_brewery_manager"],
         "fields": {"name", "code", "brew_factory_id", "brew_warehouse_type", "lot_stock_id"},
     },
     "locations": {
         "model": "stock.location",
         "write_groups": [
             "craft_brew_core.group_brew_admin",
-            "craft_brew_core.group_brew_warehouse",
+                "craft_brew_core.group_brew_brewery_manager",
         ],
         "fields": {"name", "brew_factory_id", "brew_location_type", "location_id", "usage"},
     },
@@ -58,7 +64,7 @@ RESOURCE_CONFIG = {
             "craft_brew_core.group_brew_purchase",
             "craft_brew_core.group_brew_supplier",
         ],
-        "fields": {"name", "default_code", "brew_item_type", "brew_material_category", "brew_brand", "brew_specification", "uom_id", "uom_po_id", "tracking", "standard_price", "brew_shelf_life_days", "brew_extract_rate", "brew_color_ebc", "brew_supplier_price", "brew_supplier_quantity", "brew_alpha_acid", "brew_flavor_desc", "brew_supplier_id", "brew_moisture_pct", "brew_total_protein_pct", "brew_extract_dry_pct", "brew_diastatic_power_wk", "brew_friability_pct", "brew_kolbach_index_pct", "brew_beta_dextran_mg_l", "brew_fan_mg_100g", "brew_total_nitrogen_pct", "brew_soluble_nitrogen_pct", "brew_filtration_time_min", "brew_saccharification_time_min", "brew_impurity_pct", "brew_fc_difference_pct", "brew_germination_rate_pct", "brew_total_acidity", "brew_ph", "brew_boiled_color_ebc", "brew_turbidity_ebc", "brew_ota_ug_kg", "brew_fusarium_ug_kg", "brew_batch_no", "brew_production_date", "brew_release_date", "brew_malt_class", "brew_barley_variety", "brew_sample_source", "brew_sensory_desc"},
+        "fields": {"name", "default_code", "brew_item_type", "brew_material_category", "brew_brand", "brew_specification", "image_1920", "uom_id", "uom_po_id", "tracking", "standard_price", "brew_shelf_life_days", "brew_extract_rate", "brew_color_ebc", "brew_supplier_price", "brew_supplier_quantity", "brew_alpha_acid", "brew_flavor_desc", "brew_supplier_id", "brew_moisture_pct", "brew_total_protein_pct", "brew_extract_dry_pct", "brew_diastatic_power_wk", "brew_friability_pct", "brew_kolbach_index_pct", "brew_beta_dextran_mg_l", "brew_fan_mg_100g", "brew_total_nitrogen_pct", "brew_soluble_nitrogen_pct", "brew_filtration_time_min", "brew_saccharification_time_min", "brew_impurity_pct", "brew_fc_difference_pct", "brew_germination_rate_pct", "brew_total_acidity", "brew_ph", "brew_boiled_color_ebc", "brew_turbidity_ebc", "brew_ota_ug_kg", "brew_fusarium_ug_kg", "brew_batch_no", "brew_production_date", "brew_release_date", "brew_malt_class", "brew_barley_variety", "brew_sample_source", "brew_sensory_desc", "brew_beta_acid", "brew_cohumulone_pct", "brew_total_oil_ml_100g", "brew_attenuation_min", "brew_attenuation_max", "brew_fermentation_temp_min", "brew_fermentation_temp_max", "brew_flocculation", "brew_alcohol_tolerance_pct", "brew_product_model", "brew_hop_type", "brew_yeast_style"},
     },
     "material-categories": {
         "model": "brew.material.category",
@@ -112,10 +118,15 @@ class MasterDataService:
             raise ApiError("RESOURCE_NOT_FOUND", "主数据资源不存在。", 404)
         return config
 
-    def ensure_write_access(self, resource):
+    def ensure_write_access(self, resource, create=False):
         config = self._config(resource)
+        if create and resource == "products" and self.user.has_group("craft_brew_core.group_brew_brewer"):
+            return
         if not any(self.user.has_group(group) for group in config["write_groups"]):
             raise ApiError("PERMISSION_DENIED", "当前账号无权维护该主数据。", 403)
+
+    def _allowed_factory_ids(self):
+        return self.user.brew_allowed_factories(self.company).ids
 
     def _domain(self, resource):
         company_domain = [("company_id", "=", self.company.id)]
@@ -136,12 +147,11 @@ class MasterDataService:
         domain = domains[resource]
         if resource == "materials" and not self.user.has_group("craft_brew_core.group_brew_supplier"):
             domain += ["|", ("brew_item_type", "!=", "packaging_material"), "|", ("brew_packaging_state", "=", False), ("brew_packaging_state", "=", "confirmed")]
+            domain += ["|", ("brew_item_type", "!=", "packaging_material"), ("brew_packaging_catalog_owner_id", "=", False)]
         if resource == "materials" and self.user.has_group("craft_brew_core.group_brew_supplier"):
             domain += [("brew_supplier_id", "=", self.user.brew_supplier_id.id)]
-        if resource in {"factories", "equipment", "tanks", "warehouses", "locations"} and not (
-            self.user.has_group("craft_brew_core.group_brew_admin")
-            or self.user.has_group("craft_brew_core.group_brew_general_manager")
-        ):
+            domain += ["|", ("brew_item_type", "!=", "packaging_material"), ("brew_packaging_catalog_owner_id", "=", self.user.brew_supplier_id.id)]
+        if resource in {"factories", "equipment", "tanks", "warehouses", "locations"}:
             field_name = {
                 "factories": "id",
                 "equipment": "brew_factory_id",
@@ -149,7 +159,7 @@ class MasterDataService:
                 "warehouses": "brew_factory_id",
                 "locations": "brew_factory_id",
             }[resource]
-            domain += [(field_name, "in", self.user.brew_factory_ids.ids)]
+            domain += [(field_name, "in", self._allowed_factory_ids())]
         return domain
 
     def _record(self, resource, record_id, include_archived=True):
@@ -192,6 +202,8 @@ class MasterDataService:
         )
         if not factory:
             raise ApiError("DATA_SCOPE_DENIED", "厂区不存在、已停用或不属于当前企业。", 403)
+        if factory.id not in self._allowed_factory_ids():
+            raise ApiError("DATA_SCOPE_DENIED", "当前账号只能维护所属厂区的仓库和库位。", 403)
         return factory
 
     def _values(self, resource, payload, create=False):
@@ -208,6 +220,22 @@ class MasterDataService:
         if unknown:
             raise ApiError("VALIDATION_FORMAT", "存在不允许写入的字段。", 422, {"fields": sorted(unknown)})
         values = {key: payload[key] for key in config["fields"] if key in payload}
+        if resource == "materials" and values.get("image_1920"):
+            encoded = values["image_1920"]
+            if not isinstance(encoded, str) or len(encoded) > 7_000_000:
+                raise ApiError("VALIDATION_FORMAT", "商品图片不能超过 5 MB。", 422)
+            try:
+                image_data = base64.b64decode(encoded, validate=True)
+                if len(image_data) > 5 * 1024 * 1024:
+                    raise ApiError("VALIDATION_FORMAT", "商品图片不能超过 5 MB。", 422)
+                with Image.open(BytesIO(image_data)) as image:
+                    if image.format not in {"JPEG", "PNG", "WEBP"}:
+                        raise ApiError("VALIDATION_FORMAT", "商品图片仅支持 JPG、PNG 或 WebP 格式。", 422)
+                    if image.width * image.height > 30_000_000:
+                        raise ApiError("VALIDATION_FORMAT", "图片分辨率过大，请压缩后再上传。", 422)
+                    image.verify()
+            except (binascii.Error, UnidentifiedImageError, OSError, ValueError):
+                raise ApiError("VALIDATION_FORMAT", "商品图片文件无效，请重新选择 JPG、PNG 或 WebP 图片。", 422)
         if resource == "suppliers":
             values.pop("supplier_account_login", None)
             values.pop("supplier_account_password", None)
@@ -225,6 +253,7 @@ class MasterDataService:
             "parent_id",
             "brew_beer_category_id",
             "brew_beer_subcategory_id",
+            "brew_supplier_id",
         }
         for field_name in relation_fields.intersection(values):
             values[field_name] = int(values[field_name]) if values[field_name] else False
@@ -252,20 +281,28 @@ class MasterDataService:
                 category = self.env["brew.material.category"].sudo().search(
                     [("code", "=", category_code), ("active", "=", True)], limit=1
                 ) if category_code else self.env["brew.material.category"]
-                if not category or category.material_group not in {"malt", "adjunct", "hop", "yeast"}:
-                    raise ApiError("VALIDATION_FORMAT", "供应商商品只能选择系统已有的麦芽、可发酵物、啤酒花或酵母分类。", 422)
+                if not category or category.material_group == "packaging":
+                    raise ApiError("VALIDATION_FORMAT", "供应商商品只能选择系统已有的酿造原料分类。", 422)
                 if create or "weight_uom" in payload:
                     unit = payload.get("weight_uom", "kg")
                     if unit not in {"kg", "g"}:
                         raise ApiError("VALIDATION_FORMAT", "酿造原料请选择 kg 或 g 作为计量单位。", 422)
                     uom = self.env.ref("uom.product_uom_kgm" if unit == "kg" else "uom.product_uom_gram")
                     values.update({"uom_id": uom.id, "uom_po_id": uom.id})
-                if self.user.has_group("craft_brew_core.group_brew_supplier"):
+                is_supplier = self.user.has_group("craft_brew_core.group_brew_supplier")
+                if not is_supplier and values.get("brew_supplier_id"):
+                    supplier = self.env["res.partner"].sudo().search([
+                        ("id", "=", values["brew_supplier_id"]), ("company_id", "=", self.company.id),
+                        ("supplier_rank", ">", 0), ("active", "=", True)], limit=1)
+                    if not supplier:
+                        raise ApiError("DATA_SCOPE_DENIED", "请选择系统设置中本企业有效的供应商。", 403)
+                if is_supplier or values.get("brew_supplier_id"):
                     if not category.parent_id:
                         raise ApiError("VALIDATION_FORMAT", "供应商商品必须选择系统已有的小类。", 422)
-                    if not self.user.brew_supplier_id or self.user.brew_supplier_id.company_id != self.company:
+                    if is_supplier and (not self.user.brew_supplier_id or self.user.brew_supplier_id.company_id != self.company):
                         raise ApiError("DATA_SCOPE_DENIED", "当前账号未绑定有效供应商。", 403)
-                    values["brew_supplier_id"] = self.user.brew_supplier_id.id
+                    if is_supplier:
+                        values["brew_supplier_id"] = self.user.brew_supplier_id.id
                     required = {
                         "brew_brand": "品牌/生产商",
                         "brew_specification": "规格",
@@ -330,6 +367,28 @@ class MasterDataService:
                 raise ApiError("STATE_PRECONDITION_FAILED", "厂区尚未配置标准仓库。", 422)
             values["location_id"] = factory.stock_warehouse_id.lot_stock_id.id
             values.setdefault("usage", "internal")
+        if resource == "locations" and values.get("location_id"):
+            factory_id = values.get("brew_factory_id")
+            if not factory_id:
+                raise ApiError("VALIDATION_REQUIRED", "所属厂区不能为空。", 422)
+            factory = self._factory(factory_id)
+            parent = self.env["stock.location"].sudo().search(
+                [
+                    ("id", "=", values["location_id"]),
+                    ("company_id", "=", self.company.id),
+                    ("brew_factory_id", "=", factory.id),
+                    ("usage", "=", "internal"),
+                ],
+                limit=1,
+            )
+            warehouses = self.env["stock.warehouse"].sudo().search(
+                [("company_id", "=", self.company.id), ("brew_factory_id", "=", factory.id)]
+            )
+            if not parent or parent not in warehouses.mapped("lot_stock_id"):
+                raise ApiError("DATA_SCOPE_DENIED", "库位必须归属当前厂区的仓库。", 403)
+            warehouse = warehouses.filtered(lambda item: item.lot_stock_id == parent)[:1]
+            if (warehouse.brew_warehouse_type == "material_issue") != (values.get("brew_location_type") == "material_issue"):
+                raise ApiError("VALIDATION_RELATION", "领料库只能设置领料库位，领料库位也必须属于领料库。", 422)
         if resource == "tanks" and values.get("maintenance_equipment_id"):
             factory_id = values.get("factory_id")
             equipment = self.env["maintenance.equipment"].sudo().search(
@@ -350,6 +409,29 @@ class MasterDataService:
             )
             if not product:
                 raise ApiError("DATA_SCOPE_DENIED", "包装规格关联的产品不属于当前企业。", 403)
+            if product.brew_item_type != "finished_product":
+                raise ApiError("VALIDATION_RELATION", "包装规格只能关联成品酒款。", 422)
+        if resource == "packaging-specs":
+            if create:
+                values["company_id"] = self.company.id
+            if "barcode" in values or create:
+                values["barcode"] = str(values.get("barcode") or "").strip()
+                if len(values["barcode"]) > 128:
+                    raise ApiError("VALIDATION_REQUIRED", "包装条码最多 128 字。", 422)
+                if create and values["barcode"] and self.env["product.packaging"].sudo().with_context(active_test=False).search_count([("barcode", "=", values["barcode"])]):
+                    raise ApiError("VALIDATION_DUPLICATE", "该包装条码已使用，请勿重复分配。", 422)
+                values["barcode"] = values["barcode"] or False
+            for key in ("brew_volume_l", "qty"):
+                if key in values or create:
+                    try:
+                        number = float(values.get(key) or 0)
+                        if not math.isfinite(number) or number <= 0 or key == "qty" and not number.is_integer():
+                            raise ValueError()
+                    except (TypeError, ValueError):
+                        raise ApiError("VALIDATION_RANGE", "单件容量须大于零，每件容器数须为正整数。", 422)
+                    values[key] = number
+            if create and values.get("brew_barcode_level") not in {"bottle", "can", "keg", "box"}:
+                raise ApiError("VALIDATION_REQUIRED", "请选择固定包装类型。", 422)
         if create and resource in {"products", "materials"} and values.get("default_code"):
             duplicate = self.env["product.template"].sudo().with_context(active_test=False).search_count(
                 [("company_id", "=", self.company.id), ("default_code", "=", values["default_code"])]
@@ -366,9 +448,13 @@ class MasterDataService:
             if create and (not str(values.get("name") or "").strip() or not str(values.get("code") or "").strip()):
                 raise ApiError("VALIDATION_REQUIRED", f"{label}名称和编码不能为空。", 422)
             if values.get("parent_id"):
-                parent = self.env[model_name].sudo().search([("id", "=", values["parent_id"]), ("active", "=", True)], limit=1)
+                parent = self.env[model_name].sudo().search([("id", "=", values["parent_id"]), ("active", "=", True), ("parent_id", "=", False)], limit=1)
                 if not parent:
                     raise ApiError("RESOURCE_NOT_FOUND", f"上级{label}不存在。", 404)
+                if resource == "material-categories":
+                    values["material_group"] = parent.material_group
+            elif create and resource == "material-categories":
+                values["material_group"] = values.get("code")
             if create and self.env[model_name].sudo().search_count([("code", "=", values.get("code"))]):
                 raise ApiError("VALIDATION_DUPLICATE", f"{label}编码已存在。", 422)
         if create and resource in {"suppliers", "customers"}:
@@ -486,6 +572,35 @@ class MasterDataService:
             }
         )
 
+    def _ensure_tank_location(self, tank):
+        """Bind a tank to its own location without posting any inventory."""
+        tank.ensure_one()
+        if tank.company_id != self.company:
+            raise ApiError("DATA_SCOPE_DENIED", "罐体不属于当前企业。", 403)
+        self._factory(tank.factory_id.id)
+        self.env.cr.execute("SELECT id FROM brew_tank WHERE id = %s FOR UPDATE", [tank.id])
+        tank.invalidate_recordset(["stock_location_id"])
+        if tank.stock_location_id:
+            location = tank.stock_location_id
+            if location.company_id != self.company or location.brew_factory_id != tank.factory_id or location.usage != "internal" or location.brew_location_type != "semi_finished":
+                raise ApiError("VALIDATION_RELATION", "罐体须关联本厂区的半成品库位。", 422)
+            if self.env["brew.tank"].sudo().search_count([("stock_location_id", "=", location.id), ("id", "!=", tank.id)]):
+                raise ApiError("VALIDATION_RELATION", "该库位已关联其他罐体。", 422)
+            return location
+        warehouse = self._ensure_tank_warehouse(tank.factory_id)
+        locations = self.env["stock.location"].sudo()
+        name = tank.name
+        suffix = 1
+        while locations.with_context(active_test=False).search_count([("location_id", "=", warehouse.lot_stock_id.id), ("name", "=", name)]):
+            suffix += 1
+            name = f"{tank.name}（罐位 {suffix}）"
+        location = locations.create({"name": name, "company_id": self.company.id,
+                                     "location_id": warehouse.lot_stock_id.id,
+                                     "brew_factory_id": tank.factory_id.id,
+                                     "usage": "internal", "brew_location_type": "semi_finished"})
+        tank.stock_location_id = location
+        return location
+
     def _available_warehouse_code(self, preferred):
         base = (preferred or "BREW").upper()[:5]
         code = base
@@ -497,9 +612,13 @@ class MasterDataService:
         return code
 
     def create(self, resource, payload):
-        self.ensure_write_access(resource)
+        self.ensure_write_access(resource, create=True)
         values = self._values(resource, payload, create=True)
+        if resource == "warehouses":
+            values["code"] = self._available_warehouse_code(values.get("code"))
         record = self.env[self._config(resource)["model"]].sudo().create(values)
+        if resource == "tanks":
+            self._ensure_tank_location(record)
         if resource == "suppliers":
             if not record.brew_supplier_code:
                 record.brew_supplier_code = f"SUP-{record.id:06d}"
@@ -568,6 +687,25 @@ class MasterDataService:
         if not expected or expected != current:
             raise ApiError("VERSION_CONFLICT", "数据版本不一致，请刷新后重试。", 409, {"current_version": current})
         values = self._values(resource, payload)
+        if resource == "packaging-specs":
+            if values.get("barcode") and self.env["product.packaging"].sudo().with_context(active_test=False).search_count([
+                    ("barcode", "=", values["barcode"]), ("id", "!=", record.id)]):
+                raise ApiError("VALIDATION_DUPLICATE", "该包装条码已使用，请勿重复分配。", 422)
+            from .product_trace import ProductTrace
+            plans = self.env["brew.production.plan"].sudo().search([
+                ("company_id", "=", self.company.id), ("product_tmpl_id", "=", record.product_id.product_tmpl_id.id)])
+            used = self.env["brew.packaging.order"].sudo().search_count([("packaging_id", "=", record.id)]) or any(ProductTrace.plan_package(p) == str(record.id) for p in plans)
+            identity = {"barcode", "product_id", "brew_barcode_level", "brew_volume_l", "qty"}
+            if not record.barcode:
+                identity.discard("barcode")
+            if used and any((record[key].id if key == "product_id" else record[key]) != values[key] for key in identity & values.keys()):
+                raise ApiError("STATE_PRECONDITION_FAILED", "已用于生产的包装条码和规格不能更改，请新增包装规格。", 422)
+        if resource == "warehouses" and "brew_warehouse_type" in values and values["brew_warehouse_type"] != record.brew_warehouse_type and "material_issue" in {values["brew_warehouse_type"], record.brew_warehouse_type}:
+            raise ApiError("STATE_PRECONDITION_FAILED", "领料库类型不可与其他仓库类型互相更改，请新建仓库。", 422)
+        if resource == "locations" and "brew_location_type" in values:
+            warehouse = self.env["stock.warehouse"].sudo().search([("lot_stock_id", "=", record.location_id.id), ("company_id", "=", self.company.id)], limit=1)
+            if warehouse and (warehouse.brew_warehouse_type == "material_issue") != (values["brew_location_type"] == "material_issue"):
+                raise ApiError("VALIDATION_RELATION", "领料库只能设置领料库位，领料库位也必须属于领料库。", 422)
         has_supplier_account_update = resource == "suppliers" and (
             "supplier_account_login" in payload or "supplier_account_password" in payload
         )
@@ -575,6 +713,8 @@ class MasterDataService:
             raise ApiError("VALIDATION_REQUIRED", "没有可更新的字段。", 422)
         if values:
             record.write(values)
+        if resource == "tanks":
+            self._ensure_tank_location(record)
         if resource == "suppliers" and has_supplier_account_update:
             self._save_supplier_account(record, payload)
         if resource == "equipment":
@@ -607,9 +747,20 @@ class MasterDataService:
             "active": record.active if "active" in record._fields else True,
             "version": record.write_date.isoformat() if record.write_date else None,
         }
+        if resource == "tanks":
+            data.update(status=record.status, current_volume_l=record.current_volume_l,
+                        occupied=bool(record.current_volume_l > 0 or record.current_production_batch_id or record.status != 'empty'))
+        if resource == "products":
+            data["product_name"] = record.name
+            data["product_variant_id"] = str(record.product_variant_id.id)
+        if resource == "packaging-specs":
+            data["product_tmpl_id"] = str(record.product_id.product_tmpl_id.id)
+            data["product_name"] = record.product_id.product_tmpl_id.name
         field_names = self._config(resource)["fields"]
         for field_name in field_names:
             if field_name == "name" or field_name not in record._fields:
+                continue
+            if resource == "materials" and field_name == "image_1920":
                 continue
             field = record._fields[field_name]
             value = record[field_name]
@@ -664,7 +815,18 @@ class MasterDataService:
             data["account"] = {"login": account.login, "active": account.active} if account else None
         if resource == "material-categories":
             data["brew_packaging_type"] = record.brew_packaging_type
+        if resource == "materials":
+            data["image_url"] = f"/api/v1/materials/{record.id}/image" if record.image_1920 else None
         return data
+
+    def material_image(self, record_id):
+        record = self._record("materials", record_id)
+        if not record.image_256:
+            raise ApiError("RESOURCE_NOT_FOUND", "商品图片不存在。", 404)
+        content = base64.b64decode(record.image_256)
+        with Image.open(BytesIO(content)) as image:
+            mimetype = image.get_format_mimetype() or "image/jpeg"
+        return content, mimetype
 
     def _equipment(self, equipment_id):
         equipment = self.env["maintenance.equipment"].sudo().search(

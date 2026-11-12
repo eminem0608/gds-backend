@@ -1,3 +1,6 @@
+import json
+from datetime import timedelta
+
 from odoo import Command, fields
 from odoo.tests import TransactionCase, tagged
 
@@ -72,6 +75,152 @@ class TestPurchaseService(TransactionCase):
                 ],
             }
         )
+
+    def test_only_director_or_admin_can_initiate_factory_requisition(self):
+        def make_user(login, group):
+            return self.env["res.users"].create({
+                "name": login,
+                "login": login,
+                "company_id": self.env.company.id,
+                "company_ids": [Command.link(self.env.company.id)],
+                "groups_id": [Command.set([
+                    self.env.ref("base.group_user").id,
+                    self.env.ref(group).id,
+                ])],
+                "brew_factory_ids": [Command.link(self.factory.id)],
+            })
+
+        director = make_user("purchase_director_test", "craft_brew_core.group_brew_production_director")
+        purchaser = make_user("purchase_purchaser_test", "craft_brew_core.group_brew_purchase")
+        admin = make_user("purchase_admin_test", "craft_brew_core.group_brew_admin")
+        requisitions = self.env["brew.purchase.requisition"]
+        self.assertTrue(requisitions.with_user(director).check_access_rights("create", raise_exception=False))
+        self.assertFalse(requisitions.with_user(purchaser).check_access_rights("create", raise_exception=False))
+        self.assertTrue(requisitions.with_user(admin).check_access_rights("create", raise_exception=False))
+        request = {
+            "request_type": "emergency",
+            "factory_id": self.factory.id,
+            "need_date": fields.Date.today().isoformat(),
+            "emergency_reason": "测试紧急缺料",
+            "lines": [{
+                "product_id": self.products[0].id,
+                "requested_qty": 2,
+                "uom_id": self.products[0].uom_id.id,
+            }],
+        }
+        director_service = PurchaseService(self.env, director, self.env.company)
+        purchaser_service = PurchaseService(self.env, purchaser, self.env.company)
+        record, _data = director_service.create_requisition(request)
+        self.assertEqual(record.requester_id, director)
+        director_service.update_requisition(record.id, {
+            "version": director_service._version(record), "reason": "本厂补料",
+        })
+        director_service.requisition_action(record.id, "submit", {
+            "version": director_service._version(record),
+        })
+        self.assertEqual(record.state, "submitted")
+
+        for action in (
+            lambda: purchaser_service.create_requisition(request),
+            lambda: purchaser_service.update_requisition(record.id, {
+                "version": purchaser_service._version(record), "reason": "不允许",
+            }),
+            lambda: purchaser_service.aggregate_requisitions({"plan_ids": []}),
+            lambda: purchaser_service.requisition_action(record.id, "submit", {
+                "version": purchaser_service._version(record),
+            }),
+        ):
+            with self.assertRaises(ApiError) as denied:
+                action()
+            self.assertEqual(denied.exception.code, "PERMISSION_DENIED")
+
+        other_factory = self.env["brew.factory"].create({
+            "name": "其他酒厂", "code": "API-PUR-OTHER", "company_id": self.env.company.id,
+        })
+        with self.assertRaises(ApiError) as denied:
+            director_service.create_requisition({**request, "factory_id": other_factory.id})
+        self.assertEqual(denied.exception.code, "DATA_SCOPE_DENIED")
+
+        admin_service = PurchaseService(self.env, admin, self.env.company)
+        admin_record, _data = admin_service.create_requisition({**request, "factory_id": other_factory.id})
+        self.assertEqual(admin_record.requester_id, admin)
+
+    def test_partial_shortage_request_keeps_original_gap_and_remaining_amount(self):
+        finished = self.env["product.template"].create({
+            "name": "部分采购测试酒品", "company_id": self.env.company.id,
+            "detailed_type": "product", "brew_item_type": "finished_product",
+        })
+        equipment = self.env["maintenance.equipment"].create({
+            "name": "部分采购测试糖化设备", "company_id": self.env.company.id,
+            "brew_factory_id": self.factory.id, "brew_equipment_type": "mash",
+        })
+        tank = self.env["brew.tank"].create({
+            "name": "部分采购测试罐", "factory_id": self.factory.id,
+            "capacity_l": 2000, "cleaning_status": "clean",
+        })
+        recipe = self.env["brew.recipe"].create({
+            "name": "部分采购测试配方", "code": "API-PUR-PARTIAL",
+            "company_id": self.env.company.id, "product_tmpl_id": finished.id,
+            "equipment_id": equipment.id,
+        })
+        version = self.env["brew.recipe.version"].create({
+            "recipe_id": recipe.id, "version": 1, "base_volume_l": 1000,
+            "state": "active",
+        })
+        start = fields.Datetime.now() + timedelta(days=2)
+        plan = self.env["brew.production.plan"].create({
+            "name": "API-PUR-PARTIAL-PLAN", "company_id": self.env.company.id,
+            "factory_id": self.factory.id, "product_tmpl_id": finished.id,
+            "recipe_version_id": version.id, "planned_volume_l": 1000,
+            "planned_start": start, "planned_end": start + timedelta(days=1),
+            "equipment_id": equipment.id, "tank_id": tank.id,
+            "mash_owner_id": self.env.user.id,
+            "fermentation_owner_id": self.env.user.id,
+            "state": "stocking",
+            "material_snapshot_json": json.dumps({"materials": [{
+                "material_id": self.products[0].id,
+                "uom_id": self.products[0].uom_id.id,
+                "quantity": 10,
+            }]}),
+        })
+        service = PurchaseService(self.env, self.env.user, self.env.company)
+        payload = {
+            "need_date": fields.Date.today().isoformat(),
+            "items": [{
+                "plan_id": plan.id, "product_id": self.products[0].id,
+                "requested_qty": 4,
+            }],
+        }
+        first, data = service.aggregate_requisitions(payload)
+        self.assertEqual(first.line_ids.requested_qty, 4)
+        self.assertEqual(first.line_ids.allocation_ids.shortage_qty, 4)
+        self.assertEqual(first.line_ids.allocation_ids.source_shortage_qty, 10)
+        self.assertEqual(data[0]["lines"][0]["allocations"][0]["source_shortage_qty"], 10)
+        source = service.requisition_source_plans({"plan_no": plan.name})[0]
+        self.assertEqual(source["materials"][0]["requestable_qty"], 6)
+
+        with self.assertRaises(ApiError) as invalid:
+            service.aggregate_requisitions({
+                **payload, "items": [{**payload["items"][0], "requested_qty": 0}],
+            })
+        self.assertEqual(invalid.exception.code, "VALIDATION_RANGE")
+        second, _data = service.aggregate_requisitions({
+            **payload, "items": [{**payload["items"][0], "requested_qty": 6}],
+        })
+        self.assertEqual(second.line_ids.requested_qty, 6)
+        self.assertEqual(second.line_ids.allocation_ids.source_shortage_qty, 10)
+
+        plan.write({"material_snapshot_json": json.dumps({"materials": [{
+            "material_id": self.products[0].id,
+            "uom_id": self.products[0].uom_id.id,
+            "quantity": 12,
+        }]})})
+        extra, _data = service.aggregate_requisitions({
+            **payload, "items": [{**payload["items"][0], "requested_qty": 4}],
+        })
+        self.assertEqual(extra.line_ids.requested_qty, 4)
+        self.assertEqual(extra.line_ids.allocation_ids.source_shortage_qty, 12)
+        self.assertEqual(service.requisition_source_plans({"plan_no": plan.name})[0]["materials"][0]["requestable_qty"], 0)
 
     def test_requisition_lines_are_split_into_orders_by_supplier(self):
         requisitions = (

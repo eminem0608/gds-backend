@@ -7,6 +7,15 @@ from .base import ApiError, BrewApiController
 
 
 class PlanningController(BrewApiController):
+    @http.route("/api/v1/production-plan-packaging-options", type="http", auth="public", methods=["GET"], csrf=False)
+    def production_plan_packaging_options(self):
+        request_id = self._request_id()
+        try:
+            _user, _company, service = self._planning_context()
+            return self._response(service.packaging_options(request.httprequest.args.get("product_tmpl_id"), request.httprequest.args.get("factory_id")), request_id=request_id)
+        except Exception as exc:
+            return self._error_response(exc, request_id)
+
     def _planning_context(self, mutation=False):
         user, company, _session, mode = self._authenticate()
         if mutation: self._validate_cookie_csrf(mode)
@@ -76,6 +85,8 @@ class PlanningController(BrewApiController):
             allowed = {
                 "request-stock",
                 "complete-stock",
+                "set-packaging-plan",
+                "set-raw-customer",
                 "check-resources",
                 "expand-materials",
                 "check-inventory",
@@ -85,7 +96,9 @@ class PlanningController(BrewApiController):
                 "approve",
                 "dispatch",
                 "cancel",
+                "delete",
                 "terminate",
+                "complete-brewing",
             }
             if action not in allowed: raise ApiError("RESOURCE_NOT_FOUND", "生产计划动作不存在。", 404)
             if action == "submit": action = "dispatch"
@@ -105,8 +118,9 @@ class PlanningController(BrewApiController):
                 plan = service._record(plan_id)
             else:
                 plan, data = service.action(plan_id, action, payload)
-            if action in {"submit", "dispatch", "cancel", "terminate"}:
-                request.env["brew.outbox.event"].sudo().enqueue(f"production_plan.{action}", plan._name, plan.id, {"plan_id": plan.id, "name": plan.name, "state": plan.state}, company)
+            if action in {"submit", "dispatch", "complete-stock", "cancel", "delete", "terminate", "complete-brewing"}:
+                event_action = "dispatch" if action == "complete-stock" else action
+                request.env["brew.outbox.event"].sudo().enqueue(f"production_plan.{event_action}", plan._name, plan.id, {"plan_id": plan.id, "name": plan.name, "state": plan.state}, company)
             self._audit("production_plan", action, request_id, user=user, company=company, summary={"plan_id": plan.id})
             return self._complete_idempotency(idem, data)
         except Exception as exc: return self._error_response(exc, request_id)

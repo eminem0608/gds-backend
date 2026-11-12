@@ -2,5 +2,7 @@ id,name,model_id:id,group_id:id,perm_read,perm_write,perm_create,perm_unlink
 access_brew_product_demand_user,brew.product.demand user,model_brew_product_demand,base.group_user,1,0,0,0
 access_brew_product_demand_sales,brew.product.demand sales,model_brew_product_demand,craft_brew_core.group_brew_sales,1,1,1,0
 access_brew_product_demand_director,brew.product.demand director,model_brew_product_demand,craft_brew_core.group_brew_production_director,1,1,0,0
+access_brew_product_demand_headquarters_planner,brew.product.demand headquarters planner,model_brew_product_demand,craft_brew_core.group_brew_headquarters_planner,1,1,1,0
+access_brew_product_demand_brewery_manager,brew.product.demand brewery manager,model_brew_product_demand,craft_brew_core.group_brew_brewery_manager,1,0,0,0
 access_brew_product_demand_manager,brew.product.demand manager,model_brew_product_demand,craft_brew_core.group_brew_general_manager,1,1,0,0
 access_brew_product_demand_admin,brew.product.demand admin,model_brew_product_demand,craft_brew_core.group_brew_admin,1,1,1,0

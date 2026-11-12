@@ -1,4 +1,5 @@
 import json
+import math
 from datetime import timedelta
 
 from odoo import api, fields, models
@@ -42,18 +43,26 @@ class BrewPackagingOrder(models.Model):
     estimated_material_cost = fields.Float(readonly=True)
     estimated_total_cost = fields.Float(readonly=True)
     note = fields.Text()
+    task_id = fields.Many2one("brew.task", index=True, copy=False, ondelete="restrict")
+    liquid_deducted = fields.Boolean(copy=False, readonly=True)
+    unit_volume_l = fields.Float(copy=False, readonly=True)
+    units_per_package = fields.Float(copy=False, readonly=True)
 
     _sql_constraints = [
-        ("session_unique", "unique(session_id)", "A fermentation session can have only one packaging order."),
+        ("task_unique", "unique(task_id)", "一个包装任务只能登记一次产出。"),
         ("planned_volume_positive", "check(planned_volume_l > 0)", "Planned volume must be positive."),
     ]
+
+    def init(self):
+        # A batch may be packaged in several runs while its remaining liquid stays in tank.
+        self.env.cr.execute("ALTER TABLE brew_packaging_order DROP CONSTRAINT IF EXISTS brew_packaging_order_session_unique")
 
     @api.model_create_multi
     def create(self, values_list):
         records = self.browse()
         for values in values_list:
             session = self.env["brew.fermentation.session"].browse(values.get("session_id")).exists()
-            if not session or session.state != "ready":
+            if not session or (session.state != "ready" and not (self.env.context.get("brew_existing_packaging_output") and session.state == "completed")):
                 raise ValidationError("Only a ready fermentation session can be packaged.")
             product = self.env["product.product"].browse(values.get("product_id")).exists()
             if not product or product.product_tmpl_id != session.batch_id.product_tmpl_id:
@@ -65,6 +74,8 @@ class BrewPackagingOrder(models.Model):
             if not location or location.usage != "internal" or location.brew_factory_id != session.factory_id or location.brew_location_type != "finished":
                 raise ValidationError("The output location must be a finished-goods location in the same factory.")
             values.setdefault("planned_volume_l", session.current_volume_l)
+            values.setdefault("unit_volume_l", packaging.brew_volume_l)
+            values.setdefault("units_per_package", packaging.qty)
             if values.get("name", "New") == "New":
                 values["name"] = self.env["ir.sequence"].next_by_code("brew.packaging.order") or "New"
             records |= super(BrewPackagingOrder, self).create(values)
@@ -72,25 +83,73 @@ class BrewPackagingOrder(models.Model):
 
     def action_start(self):
         for order in self:
-            if order.state != "draft" or order.session_id.state != "ready":
+            if order.state != "draft" or (order.session_id.state != "ready" and not (self.env.context.get("brew_existing_packaging_output") and order.session_id.state == "completed")):
                 raise ValidationError("Only a draft order with a ready session can start.")
             order.write({"state": "in_progress", "started_at": fields.Datetime.now()})
         return True
+
+    def _packaging_virtual_location(self, product, usage):
+        self.ensure_one()
+        field = {"production": "property_stock_production", "inventory": "property_stock_inventory"}[usage]
+        location = product.with_company(self.company_id)[field]
+        if not location or location.usage != usage or (location.company_id and location.company_id != self.company_id):
+            raise ValidationError(f"{product.display_name} 未配置本企业可用的{usage}虚拟库位，请联系管理员。")
+        return location
 
     def action_submit(self, output_qty, output_volume_l, loss_volume_l=0):
         self.ensure_one()
         if self.state != "in_progress":
             raise ValidationError("Only an in-progress packaging order can be submitted.")
         quantity, volume, loss = float(output_qty or 0), float(output_volume_l or 0), float(loss_volume_l or 0)
-        if quantity <= 0 or volume <= 0 or loss < 0:
+        if not all(math.isfinite(v) for v in (quantity, volume, loss)) or quantity <= 0 or not quantity.is_integer() or volume <= 0 or loss < 0:
             raise ValidationError("Output quantity and volume must be positive and loss cannot be negative.")
         if volume + loss > self.planned_volume_l + 0.001:
             raise ValidationError("Packaged volume plus loss cannot exceed the available tank volume.")
         for line in self.material_line_ids:
             if line.actual_qty < 0 or line.loss_qty < 0 or line.actual_qty + line.loss_qty > line.planned_qty + line.uom_id.rounding:
                 raise ValidationError("Packaging material usage must be non-negative and cannot exceed its documented quantity.")
+        if self.unit_volume_l <= 0 or abs(volume - quantity * self.unit_volume_l) > 0.000001:
+            raise ValidationError("实际产出酒液量必须与包装数量和规格容量一致。")
+        self.env.cr.execute("SELECT id FROM brew_production_batch WHERE id = %s FOR UPDATE", [self.batch_id.id])
+        self.env.cr.execute("SELECT id FROM brew_packaging_order WHERE id = %s FOR UPDATE", [self.id])
+        self.invalidate_recordset()
+        if self.state != "in_progress":
+            raise ValidationError("包装产出已提交，请刷新后查看。")
+        previous = self.search([("batch_id", "=", self.batch_id.id), ("id", "!=", self.id), ("state", "in", ["pending_release", "released"])])
+        available = self.batch_id.actual_volume_l - sum(previous.mapped("output_volume_l")) - sum(previous.mapped("loss_volume_l"))
+        if volume + loss > available + 0.000001:
+            raise ValidationError("包装产出和损耗之和不能超过本批剩余原液量。")
+        if not self.env.context.get("brew_existing_packaging_output"):
+            self._deduct_packaging_liquid(volume, loss)
+        # Materials have physically been used at this point; release only posts finished goods.
+        for line in self.material_line_ids:
+            for key, qty, usage in [("consumption_move_id", line.actual_qty, "production"), ("loss_move_id", line.loss_qty, "inventory")]:
+                if qty:
+                    destination = self._packaging_virtual_location(line.product_id, usage)
+                    line[key] = self._brew_create_done_move(name=f"{self.name} packaging material", product=line.product_id,
+                        quantity=qty, uom=line.uom_id, source_location=line.source_location_id,
+                        destination_location=destination, lot=line.lot_id, source_model=self._name,
+                        source_id=self.id, source_reference=self.name)
+        self.liquid_deducted = True
         self.write({"output_qty": quantity, "output_volume_l": volume, "loss_volume_l": loss, "state": "pending_release", "submitted_at": fields.Datetime.now()})
         return True
+
+    def _deduct_packaging_liquid(self, volume, loss):
+        self.ensure_one()
+        if not math.isfinite(volume) or not math.isfinite(loss) or volume <= 0 or loss < 0:
+            raise ValidationError("请先核对包装产出与损耗记录。")
+        tank = self.session_id.tank_id
+        self.env.cr.execute("SELECT id FROM brew_tank WHERE id = %s FOR UPDATE", [tank.id])
+        tank.invalidate_recordset()
+        if tank.current_production_batch_id != self.batch_id or tank.current_volume_l + 0.000001 < volume + loss:
+            raise ValidationError("请先核对本批原液实际罐位和在罐数量，再登记包装产出。")
+        remaining = max(0, tank.current_volume_l - volume - loss)
+        values = {"current_volume_l": remaining}
+        if remaining <= 0.000001:
+            values.update(status="empty", cleaning_status="dirty", current_production_batch_id=False, current_batch_no=False, current_product=False)
+        tank.write(values)
+        self.session_id.write({"current_volume_l": remaining, **({"state": "completed", "completed_at": fields.Datetime.now()} if remaining <= 0.000001 else {})})
+        self.liquid_deducted = True
 
     def _estimated_process_cost(self):
         self.ensure_one()
@@ -101,26 +160,30 @@ class BrewPackagingOrder(models.Model):
 
     def action_release(self, user, confirmed):
         self.ensure_one()
+        self.env.cr.execute("SELECT id FROM brew_production_batch WHERE id = %s FOR UPDATE", [self.batch_id.id])
+        self.env.cr.execute("SELECT id FROM brew_packaging_order WHERE id = %s FOR UPDATE", [self.id])
+        self.invalidate_recordset()
         if confirmed is not True:
             raise ValidationError("Packaging release requires explicit confirmation.")
         if self.state != "pending_release":
             raise ValidationError("Only a pending packaging order can be released.")
         if self.product_id.tracking == "none":
             raise ValidationError("The finished product must use lot tracking before release.")
-        production_location = self.env.ref("stock.stock_location_production")
-        inventory_location = self.env.ref("stock.stock_location_inventory")
+        production_location = self._packaging_virtual_location(self.product_id, "production")
+        if not self.liquid_deducted:
+            self._deduct_packaging_liquid(self.output_volume_l, self.loss_volume_l)
         material_cost = 0.0
         for line in self.material_line_ids:
-            if line.actual_qty:
+            if line.actual_qty and not line.consumption_move_id:
                 line.consumption_move_id = self._brew_create_done_move(
                     name=f"{self.name} material consumption", product=line.product_id, quantity=line.actual_qty,
-                    uom=line.uom_id, source_location=line.source_location_id, destination_location=production_location,
+                    uom=line.uom_id, source_location=line.source_location_id, destination_location=self._packaging_virtual_location(line.product_id, "production"),
                     lot=line.lot_id, source_model=self._name, source_id=self.id, source_reference=self.name,
                 )
-            if line.loss_qty:
+            if line.loss_qty and not line.loss_move_id:
                 line.loss_move_id = self._brew_create_done_move(
                     name=f"{self.name} packaging loss", product=line.product_id, quantity=line.loss_qty,
-                    uom=line.uom_id, source_location=line.source_location_id, destination_location=inventory_location,
+                    uom=line.uom_id, source_location=line.source_location_id, destination_location=self._packaging_virtual_location(line.product_id, "inventory"),
                     lot=line.lot_id, source_model=self._name, source_id=self.id, source_reference=self.name,
                 )
             material_cost += line.uom_id._compute_quantity(line.actual_qty + line.loss_qty, line.product_id.uom_id) * line.product_id.standard_price
@@ -132,7 +195,7 @@ class BrewPackagingOrder(models.Model):
             "brew_quality_status": "qualified", "brew_source_model": self._name, "brew_source_id": self.id,
         })
         output_move = self._brew_create_done_move(
-            name=f"{self.name} finished goods receipt", product=self.product_id, quantity=self.output_qty,
+            name=f"{self.name} finished goods receipt", product=self.product_id, quantity=self.output_qty * (self.units_per_package or self.packaging_id.qty),
             uom=self.product_id.uom_id, source_location=production_location, destination_location=self.finished_location_id,
             lot=lot, source_model=self._name, source_id=self.id, source_reference=self.name,
         )
@@ -142,13 +205,12 @@ class BrewPackagingOrder(models.Model):
             "estimated_material_cost": material_cost, "estimated_total_cost": material_cost + self._estimated_process_cost(),
         })
         self.session_id._complete_node("packaging_release", user)
-        self.session_id.action_complete(user, True)
         self.env["brew.trace.code"].create_for_order(self, "batch", 1)
         return True
 
     def action_cancel(self, reason):
         for order in self:
-            if order.state == "released" or not str(reason or "").strip():
+            if order.state in {"released", "pending_release"} or not str(reason or "").strip():
                 raise ValidationError("A released order cannot be cancelled and a reason is required.")
             order.write({"state": "cancelled", "note": reason})
         return True

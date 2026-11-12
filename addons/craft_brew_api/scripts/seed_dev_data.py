@@ -358,7 +358,6 @@ if not version:
     )
     version.action_submit(admin)
     version.action_approve(admin)
-    version.action_activate()
 
 demand = get_or_create(
     "brew.product.demand",

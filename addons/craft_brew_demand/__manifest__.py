@@ -1,7 +1,7 @@
 {
     "name": "Craft Brew Demand",
     "summary": "Customer product demand and confirmation workflow.",
-    "version": "17.0.1.0.0",
+    "version": "17.0.1.2.0",
     "category": "Sales",
     "author": "Craft Brew",
     "license": "LGPL-3",

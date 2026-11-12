@@ -1,4 +1,5 @@
 import json
+import math
 
 from odoo import Command, fields
 
@@ -8,6 +9,7 @@ from .inventory import InventoryService
 
 PRODUCTION_READ_GROUPS = {
     "craft_brew_core.group_brew_general_manager",
+    "craft_brew_core.group_brew_brewery_manager",
     "craft_brew_core.group_brew_production_director",
     "craft_brew_core.group_brew_operator",
     "craft_brew_core.group_brew_warehouse",
@@ -81,6 +83,9 @@ class ProductionService:
             "id": str(record.id),
             "name": record.name,
             "state": record.state,
+            "issued_at": record.issued_at.isoformat() if record.issued_at else None,
+            "acknowledged_at": record.acknowledged_at.isoformat() if record.acknowledged_at else None,
+            "completed_at": record.completed_at.isoformat() if record.completed_at else None,
             "plan": {
                 "id": str(record.production_plan_id.id),
                 "name": record.production_plan_id.name,
@@ -158,20 +163,28 @@ class ProductionService:
     def create_requisition(self, payload):
         self._require_warehouse()
         plan = self.inventory._plan(payload.get("production_plan_id"))
-        if plan.state not in {"approved", "dispatched", "in_progress"}:
-            raise ApiError("STATE_PRECONDITION_FAILED", "生产计划尚未批准。", 422)
+        self.env.cr.execute("SELECT id FROM brew_production_plan WHERE id = %s FOR UPDATE", [plan.id])
+        plan.invalidate_recordset()
+        if self.env["brew.material.requisition"].sudo().search_count([("production_plan_id", "=", plan.id), ("state", "!=", "cancelled")]):
+            raise ApiError("STATE_PRECONDITION_FAILED", "本批已有领料单，请在现有单据中继续办理，避免重复发料。", 422)
+        if plan.state not in {"dispatched", "in_progress"}:
+            raise ApiError("STATE_PRECONDITION_FAILED", "生产计划下发后才能领料。", 422)
         source = self.inventory._location(payload.get("source_location_id"))
         destination = self.inventory._location(payload.get("production_location_id"))
         if source.brew_factory_id != plan.factory_id or destination.brew_factory_id != plan.factory_id:
             raise ApiError("VALIDATION_RELATION", "领料库位必须属于生产计划厂区。", 422)
-        materials = json.loads(plan.material_snapshot_json or "{}").get("materials", [])
-        if not materials:
-            materials = plan.expand_materials().get("materials", [])
+        if source.usage != "internal" or source.brew_location_type != "raw_material" or destination.usage != "internal" or destination.brew_location_type != "material_issue":
+            raise ApiError("VALIDATION_RELATION", "请选择原料库位和领料库位。", 422)
+        materials = self.inventory._group_plan_materials(self.inventory._plan_materials(plan))
         overrides = {
             int(item["product_id"]): float(item["requested_qty"])
             for item in payload.get("lines") or []
             if item.get("product_id")
         }
+        if set(overrides) - {int(material["material_id"]) for material in materials}:
+            raise ApiError("VALIDATION_RELATION", "领料明细包含计划外原料。", 422)
+        if any(not math.isfinite(quantity) or quantity <= 0 for quantity in overrides.values()):
+            raise ApiError("VALIDATION_RANGE", "领料数量必须为正数。", 422)
         commands = []
         for material in materials:
             product = self.inventory._product(material["material_id"])
@@ -200,7 +213,12 @@ class ProductionService:
     def recommend_lots(self, record_id, payload):
         self._require_warehouse()
         record = self._record("brew.material.requisition", record_id)
+        self.env.cr.execute("SELECT id FROM brew_production_plan WHERE id = %s FOR UPDATE", [record.production_plan_id.id])
+        self.env.cr.execute("SELECT id FROM brew_material_requisition WHERE id = %s FOR UPDATE", [record.id])
+        record.invalidate_recordset()
         self._check_version(record, payload.get("version"))
+        if record.state == "recommended":
+            record.state = "draft"
         if record.state not in {"draft", "overage_pending"}:
             raise ApiError("STATE_PRECONDITION_FAILED", "当前领料单不能推荐批次。", 422)
         if (
@@ -228,19 +246,27 @@ class ProductionService:
         record.line_ids.mapped("allocation_ids").unlink()
         reservation_values = []
         shortages = []
+        picked = {}
         for line in record.line_ids:
             needed_base = line.uom_id._compute_quantity(
-                line.requested_qty, line.product_id.uom_id
+                line.requested_qty, line.product_id.uom_id, round=False
             )
             remaining = needed_base
             allocations = []
             for candidate in self.inventory._candidate_stock(
                 line.product_id, record.factory_id, lock=True
             ):
-                take = min(candidate["quantity"], remaining)
+                if payload.get("auto_source_locations"):
+                    if candidate["location"].brew_location_type != "raw_material":
+                        continue
+                elif candidate["location"] != record.source_location_id:
+                    continue
+                key = (line.product_id.id, candidate["lot"].id, candidate["location"].id)
+                take = min(candidate["quantity"] - picked.get(key, 0), remaining)
                 if take <= 0:
                     continue
-                display_qty = line.product_id.uom_id._compute_quantity(take, line.uom_id)
+                picked[key] = picked.get(key, 0) + take
+                display_qty = line.product_id.uom_id._compute_quantity(take, line.uom_id, round=False)
                 allocations.append(
                     Command.create(
                         {
@@ -265,7 +291,7 @@ class ProductionService:
                     }
                 )
                 remaining -= take
-                if remaining <= line.product_id.uom_id.rounding:
+                if remaining <= 1e-8:
                     remaining = 0
                     break
             if remaining:
@@ -291,25 +317,95 @@ class ProductionService:
 
     def requisition_action(self, record_id, action, payload):
         record = self._record("brew.material.requisition", record_id)
+        self.env.cr.execute("SELECT id FROM brew_production_plan WHERE id = %s FOR UPDATE", [record.production_plan_id.id])
+        self.env.cr.execute("SELECT id FROM brew_material_requisition WHERE id = %s FOR UPDATE", [record.id])
+        record.invalidate_recordset()
         self._check_version(record, payload.get("version"))
+        if action in {"return", "complete", "settle"}:
+            self._require_operator()
+            if record.production_plan_id.mash_owner_id != self.user and not (self.user.has_group("craft_brew_core.group_brew_production_director") or self.user.has_group("craft_brew_core.group_brew_admin")):
+                raise ApiError("PERMISSION_DENIED", "只有本批负责人、生产总监或管理员可以登记物料去向。", 403)
         if action == "request-overage":
             self._require_operator()
             record.action_request_overage(self.user, payload.get("reason"))
         elif action == "issue":
             self._require_warehouse()
+            issued = {}
+            for line in record.line_ids:
+                available = {(item["lot"].id, item["location"].id): item["quantity"] for item in self.inventory._candidate_stock(line.product_id, record.factory_id, lock=True, excluded_source=(record._name, record.id))}
+                for allocation in line.allocation_ids:
+                    key = (allocation.lot_id.id, allocation.location_id.id)
+                    needed = line.uom_id._compute_quantity(allocation.recommended_qty, line.product_id.uom_id, round=False)
+                    issued_key = (line.product_id.id, *key)
+                    if needed + issued.get(issued_key, 0) > available.get(key, 0) + 1e-8:
+                        raise ApiError("INVENTORY_INSUFFICIENT", "推荐批次的可用库存或质检、效期状态已变化，请刷新并重新推荐批次。", 409)
+                    issued[issued_key] = issued.get(issued_key, 0) + needed
             record.action_issue()
+        elif action == "undo-issue":
+            self._require_warehouse()
+            if record.state != "issued":
+                raise ApiError("STATE_PRECONDITION_FAILED", "仅生产尚未确认实领的发料可以撤回。", 422)
+            for line in record.line_ids:
+                for allocation in line.allocation_ids:
+                    record._brew_create_done_move(name=f"撤回 {record.name}", product=line.product_id,
+                        quantity=allocation.issued_qty, uom=line.uom_id,
+                        source_location=record.production_location_id, destination_location=allocation.location_id,
+                        lot=allocation.lot_id, source_model=record._name, source_id=record.id, source_reference=record.name)
+                    allocation.issued_qty = 0
+            record.write({"state": "draft", "issued_at": False})
+            self.recommend_lots(record.id, {"version": self._version(record), "auto_source_locations": True})
+            preparation = self.env["brew.task"].sudo().search([("target_model", "=", "brew.production.plan"), ("target_id", "=", record.production_plan_id.id), ("task_type", "=", "material_preparation"), ("state", "!=", "cancelled")])
+            preparation.write({"state": "claimed", "completed_at": False, "last_comment": "发料已撤回，请重新核对后发料。"})
         elif action == "acknowledge":
             self._require_operator()
-            values_by_id = {
-                int(item.get("allocation_id") or 0): item
-                for item in payload.get("allocations") or []
-            }
+            if record.production_plan_id.mash_owner_id and record.production_plan_id.mash_owner_id != self.user:
+                raise ApiError("PERMISSION_DENIED", "只有本批糖化负责人可以确认实际领料。", 403)
+            if payload.get("allocations"):
+                raise ApiError("VALIDATION_RANGE", "请核对全部发料后确认实领；有差异时先联系库管核实，不能直接修改账面实领数量。", 422)
+            values_by_id = {}
             for allocation in record.line_ids.mapped("allocation_ids"):
                 values = values_by_id.get(allocation.id, {})
                 allocation.acknowledged_qty = float(
                     values.get("acknowledged_qty", allocation.issued_qty)
                 )
             record.action_acknowledge()
+        elif action == "settle":
+            self._require_operator()
+            plan = record.production_plan_id
+            if plan.mash_owner_id != self.user and not (self.user.has_group("craft_brew_core.group_brew_production_director") or self.user.has_group("craft_brew_core.group_brew_admin")):
+                raise ApiError("PERMISSION_DENIED", "只有本批糖化负责人、生产总监或管理员可以登记物料去向。", 403)
+            if record.state != "acknowledged":
+                raise ApiError("STATE_PRECONDITION_FAILED", "确认实领后才能登记物料去向。", 422)
+            allocations = record.line_ids.mapped("allocation_ids")
+            submitted = payload.get("allocations")
+            if not isinstance(submitted, list) or len(submitted) != len(allocations):
+                raise ApiError("VALIDATION_REQUIRED", "请填写每个领料批次的退料和损耗数量。", 422)
+            values_by_id = {}
+            for item in submitted:
+                try:
+                    allocation_id = int(item.get("allocation_id") or 0)
+                    returned = float(item.get("returned_qty"))
+                    loss = float(item.get("loss_qty"))
+                except (AttributeError, TypeError, ValueError):
+                    raise ApiError("VALIDATION_FORMAT", "退料和损耗数量必须是有效数字。", 422)
+                if allocation_id in values_by_id or not math.isfinite(returned) or not math.isfinite(loss):
+                    raise ApiError("VALIDATION_FORMAT", "领料批次重复或数量无效。", 422)
+                values_by_id[allocation_id] = (returned, loss)
+            returns = []
+            for allocation in allocations:
+                if allocation.id not in values_by_id:
+                    raise ApiError("VALIDATION_RELATION", "领料批次与当前单据不匹配。", 422)
+                returned, loss = values_by_id[allocation.id]
+                if abs(allocation.issued_qty - allocation.acknowledged_qty) > 1e-8:
+                    raise ApiError("STATE_PRECONDITION_FAILED", "发料与实领数量不一致，请先处理差异。", 422)
+                if returned < allocation.returned_qty or loss < 0 or returned + loss > allocation.acknowledged_qty + 1e-8:
+                    raise ApiError("VALIDATION_RANGE", "退料和损耗不能为负或超过实领数量，退料不能少于已退数量。", 422)
+                if returned > allocation.returned_qty + 1e-8:
+                    returns.append({"allocation_id": allocation.id, "returned_qty": returned})
+                allocation.write({"consumed_qty": max(allocation.acknowledged_qty - returned - loss, 0), "loss_qty": loss})
+            if returns:
+                record.action_return_materials(returns)
+            record.action_complete()
         elif action == "return":
             self._require_operator()
             record.action_return_materials(payload.get("allocations") or [])

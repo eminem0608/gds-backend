@@ -6,6 +6,28 @@ from .base import ApiError, BrewApiController
 
 
 class TraceController(BrewApiController):
+    @http.route("/api/v1/product-trace", type="http", auth="public", methods=["GET"], csrf=False)
+    def product_trace(self):
+        request_id = self._request_id()
+        try:
+            from ..services.product_trace import ProductTrace
+            _user, _company, service = self._trace_context()
+            page, size = self._trace_paging()
+            return self._response(ProductTrace(service).search(request.httprequest.args.get("code"), page, size), request_id=request_id)
+        except Exception as exc:
+            return self._error_response(exc, request_id)
+
+    @http.route("/api/v1/product-trace/batches/<int:batch_id>", type="http", auth="public", methods=["GET"], csrf=False)
+    def product_trace_batch(self, batch_id):
+        request_id = self._request_id()
+        try:
+            from ..services.product_trace import ProductTrace
+            _user, _company, service = self._trace_context()
+            package_id = int(request.httprequest.args.get("packaging_id") or 0)
+            return self._response(ProductTrace(service).detail(batch_id, package_id), request_id=request_id)
+        except Exception as exc:
+            return self._error_response(exc, request_id)
+
     def _trace_context(self, mutation=False):
         user, company, _session, mode = self._authenticate()
         if mutation:

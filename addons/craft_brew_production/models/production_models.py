@@ -1,4 +1,5 @@
 import json
+import math
 
 from odoo import api, fields, models
 from odoo.exceptions import ValidationError
@@ -111,7 +112,7 @@ class BrewMaterialRequisition(models.Model):
             raise ValidationError("超领审批通过后才能推荐批次。")
         for line in self.line_ids:
             allocated = sum(line.allocation_ids.mapped("recommended_qty"))
-            if abs(allocated - line.requested_qty) > line.uom_id.rounding:
+            if abs(allocated - line.requested_qty) > 1e-8:
                 raise ValidationError(f"{line.product_id.display_name} 推荐批次数量不足。")
         self.write({"state": "recommended"})
         return True
@@ -158,9 +159,10 @@ class BrewMaterialRequisition(models.Model):
             raise ValidationError("只有已发料领料单可以确认实领。")
         for allocation in self.line_ids.mapped("allocation_ids"):
             if (
-                allocation.acknowledged_qty < 0
+                not math.isfinite(allocation.acknowledged_qty)
+                or allocation.acknowledged_qty < 0
                 or allocation.acknowledged_qty
-                > allocation.issued_qty + allocation.line_id.uom_id.rounding
+                > allocation.issued_qty + 1e-8
             ):
                 raise ValidationError("实领数量不能小于零或超过发料数量。")
         self.write({"state": "acknowledged", "acknowledged_at": fields.Datetime.now()})
@@ -177,10 +179,10 @@ class BrewMaterialRequisition(models.Model):
                 raise ValidationError("退料批次不属于当前领料单。")
             total = float(values.get("returned_qty") or 0)
             quantity = total - allocation.returned_qty
-            if quantity <= 0:
+            if not math.isfinite(total) or quantity <= 0:
                 raise ValidationError("累计退料数量必须大于当前已退数量。")
             available = allocation.acknowledged_qty - allocation.returned_qty
-            if quantity > available + allocation.line_id.uom_id.rounding:
+            if quantity > available + 1e-8:
                 raise ValidationError("退料数量不能超过该批次可退数量。")
             self._brew_create_done_move(
                 name=self.name,
@@ -202,6 +204,10 @@ class BrewMaterialRequisition(models.Model):
         if self.state != "acknowledged":
             raise ValidationError("只有已确认实领的领料单可以完成。")
         for allocation in self.line_ids.mapped("allocation_ids"):
+            if any(not math.isfinite(value) or value < 0 for value in (allocation.returned_qty, allocation.consumed_qty, allocation.loss_qty, allocation.acknowledged_qty)):
+                raise ValidationError("退回、耗用与损耗必须是非负有效数量。")
+            if abs(allocation.issued_qty - allocation.acknowledged_qty) > 1e-8:
+                raise ValidationError("发料与实领数量不一致，请先处理差异。")
             if allocation.returned_qty > allocation.acknowledged_qty:
                 raise ValidationError("退料数量不能超过实领数量。")
             accounted = (
@@ -209,7 +215,7 @@ class BrewMaterialRequisition(models.Model):
                 + allocation.consumed_qty
                 + allocation.loss_qty
             )
-            if abs(accounted - allocation.acknowledged_qty) > allocation.line_id.uom_id.rounding:
+            if abs(accounted - allocation.acknowledged_qty) > 1e-8:
                 raise ValidationError("每个实领批次的退回、耗用与损耗数量必须守恒。")
             product = allocation.line_id.product_id
             if allocation.consumed_qty:
@@ -356,6 +362,8 @@ class BrewProductionBatch(models.Model):
     _check_company_auto = True
 
     name = fields.Char(required=True, default="New", copy=False, index=True)
+    product_code_snapshot = fields.Char(readonly=True, copy=False)
+    finished_product_code = fields.Char(readonly=True, copy=False, index=True)
     company_id = fields.Many2one(
         "res.company", related="production_plan_id.company_id", store=True, index=True
     )
@@ -406,6 +414,7 @@ class BrewProductionBatch(models.Model):
 
     _sql_constraints = [
         ("plan_unique", "unique(production_plan_id)", "一个生产计划只能创建一个生产批次。"),
+        ("finished_product_code_unique", "unique(company_id, finished_product_code)", "成品编号不能重复。"),
         ("actual_volume_non_negative", "check(actual_volume_l >= 0)", "实际体积不能小于零。"),
     ]
 
@@ -424,12 +433,43 @@ class BrewProductionBatch(models.Model):
                 values.setdefault(
                     "material_snapshot_json", plan.material_snapshot_json or "{}"
                 )
-        return super().create(values_list)
+        batches = super().create(values_list)
+        batches._assign_product_identifiers()
+        return batches
+
+    def _assign_product_identifiers(self, force=False):
+        for batch in self:
+            if batch.finished_product_code and not force:
+                continue
+            product = batch.product_tmpl_id
+            code = (product.product_variant_id.default_code or "").strip() or f"BEER-{product.id}"
+            super(BrewProductionBatch, batch).write({
+                "product_code_snapshot": code,
+                "finished_product_code": f"{code}-{batch.name}",
+            })
+
+    def init(self):
+        # Backfill existing batches once. Later edits to a beer's code must not
+        # alter identifiers already issued for production.
+        self.env.cr.execute("""
+            UPDATE brew_production_batch AS batch
+               SET product_code_snapshot = COALESCE(NULLIF(TRIM(product.default_code), ''), 'BEER-' || plan.product_tmpl_id),
+                   finished_product_code = COALESCE(NULLIF(TRIM(product.default_code), ''), 'BEER-' || plan.product_tmpl_id) || '-' || batch.name
+              FROM brew_production_plan AS plan
+              JOIN product_product AS product ON product.id = (
+                  SELECT MIN(variant.id) FROM product_product AS variant
+                   WHERE variant.product_tmpl_id = plan.product_tmpl_id)
+             WHERE batch.production_plan_id = plan.id
+               AND (batch.finished_product_code IS NULL OR batch.finished_product_code = '')
+        """)
 
     def action_start(self):
         self.ensure_one()
         if self.state != "draft" or self.production_plan_id.state != "dispatched":
             raise ValidationError("只有已下发计划的草稿批次可以开始。")
+        requisitions = self.env["brew.material.requisition"].sudo().search([("production_plan_id", "=", self.production_plan_id.id), ("state", "!=", "cancelled")])
+        if not requisitions or any(record.state not in {"acknowledged", "completed"} for record in requisitions):
+            raise ValidationError("请先由库管发料，并由生产负责人确认实领后再开始生产。")
         self.write({"state": "in_progress", "started_at": fields.Datetime.now()})
         self.production_plan_id.with_context(brew_state_transition=True).write(
             {"state": "in_progress"}

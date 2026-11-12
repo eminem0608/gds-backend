@@ -83,7 +83,7 @@ class BrewFermentationSession(models.Model):
 
     _sql_constraints = [
         ("batch_unique", "unique(batch_id)", "一个生产批次只能有一个发酵会话。"),
-        ("volume_positive", "check(current_volume_l > 0)", "发酵会话体积必须大于零。"),
+        ("volume_positive", "check(current_volume_l >= 0)", "发酵会话体积不能小于零。"),
     ]
 
     @api.depends("reading_ids.state", "reading_ids.recorded_at")
@@ -148,7 +148,7 @@ class BrewFermentationSession(models.Model):
                 "source_tank_id": batch.tank_id.id,
                 "tank_id": batch.tank_id.id,
                 "current_volume_l": batch.actual_volume_l,
-                "started_at": batch.entered_tank_at,
+                "started_at": batch.entered_tank_at or fields.Datetime.now(),
                 "process_snapshot_json": batch.recipe_snapshot_json or "{}",
                 "node_ids": commands,
             }

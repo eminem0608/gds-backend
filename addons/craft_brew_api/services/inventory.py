@@ -1,14 +1,17 @@
 import json
+import math
 from datetime import date, timedelta
 
-from odoo import Command, fields
+from odoo import Command, SUPERUSER_ID, fields
 from odoo.exceptions import ValidationError
 
 from ..controllers.base import ApiError
+from .inventory_count import InventoryCountServiceMixin
 
 
 READ_GROUPS = {
     "craft_brew_core.group_brew_general_manager",
+    "craft_brew_core.group_brew_brewery_manager",
     "craft_brew_core.group_brew_production_director",
     "craft_brew_core.group_brew_warehouse",
     "craft_brew_core.group_brew_purchase",
@@ -18,7 +21,7 @@ READ_GROUPS = {
 }
 
 
-class InventoryService:
+class InventoryService(InventoryCountServiceMixin):
     def __init__(self, env, user, company, enforce_access=True):
         self.env = env
         self.user = user
@@ -29,21 +32,13 @@ class InventoryService:
     def _require_manage(self):
         if not (
             self.user.has_group("craft_brew_core.group_brew_warehouse")
+            or self.user.has_group("craft_brew_core.group_brew_brewery_manager")
             or self.user.has_group("craft_brew_core.group_brew_admin")
         ):
-            raise ApiError("PERMISSION_DENIED", "只有库管或系统管理员可以执行库存操作。", 403)
+            raise ApiError("PERMISSION_DENIED", "只有酒厂负责人、库管或系统管理员可以执行库存操作。", 403)
 
     def _allowed_factory_ids(self):
-        if (
-            self.user.has_group("craft_brew_core.group_brew_general_manager")
-            or self.user.has_group("craft_brew_core.group_brew_admin")
-        ):
-            return self.env["brew.factory"].sudo().search(
-                [("company_id", "=", self.company.id), ("active", "=", True)]
-            ).ids
-        return self.user.brew_factory_ids.filtered(
-            lambda factory: factory.company_id == self.company and factory.active
-        ).ids
+        return self.user.brew_allowed_factories(self.company).ids
 
     def _factory(self, factory_id):
         factory = self.env["brew.factory"].sudo().search(
@@ -92,6 +87,8 @@ class InventoryService:
         )
         if not product:
             raise ApiError("RESOURCE_NOT_FOUND", "产品或物料不存在。", 404)
+        if product.brew_item_type == "packaging_material" and product.brew_packaging_catalog_owner_id:
+            raise ApiError("DATA_SCOPE_DENIED", "供应商目录商品不能直接作为酒厂库存物料。", 403)
         return product
 
     def _lot(self, lot_id):
@@ -119,6 +116,149 @@ class InventoryService:
             location = self._location(location_id)
             domain.append(("id", "child_of", location.id))
         return domain
+
+    def create_opening_stock(self, payload):
+        """Post an authorized opening balance through Odoo's inventory adjustment flow."""
+        self._require_manage()
+        factory = self._factory(payload.get("factory_id"))
+        location = self._location(payload.get("location_id"))
+        product = self._product(payload.get("product_id"))
+        quantity = float(payload.get("quantity") or 0)
+        package_count = 0
+        packaging = self.env["product.packaging"]
+        if product.brew_item_type == "finished_product" and payload.get("packaging_id"):
+            packaging = self.env["product.packaging"].sudo().search([
+                ("id", "=", int(payload.get("packaging_id"))), ("product_id", "=", product.id),
+                ("company_id", "in", [False, self.company.id]), ("active", "=", True),
+                ("qty", ">", 0),
+            ], limit=1)
+            if not packaging:
+                raise ApiError("VALIDATION_RELATION", "包装规格不属于所选成品酒或已停用。", 422)
+            try:
+                package_count_raw = float(payload.get("package_count") or 0)
+                if not package_count_raw.is_integer() or package_count_raw <= 0:
+                    raise ValueError()
+            except (TypeError, ValueError):
+                raise ApiError("VALIDATION_RANGE", "箱数或桶数必须为正整数。", 422)
+            package_count = int(package_count_raw)
+            quantity = package_count * packaging.qty
+            if abs(quantity - round(quantity)) > 1e-8:
+                raise ApiError("VALIDATION_RANGE", "包装规格换算出的库存数量不是整数，请检查包装配置。", 422)
+            quantity = int(round(quantity))
+        elif product.brew_item_type == "finished_product" and payload.get("package_count"):
+            raise ApiError("VALIDATION_REQUIRED", "请先选择成品包装规格。", 422)
+        if quantity <= 0:
+            raise ApiError("VALIDATION_RANGE", "库存数量必须大于零。", 422)
+        if location.brew_factory_id != factory:
+            raise ApiError("DATA_SCOPE_DENIED", "库位不属于所选酒厂。", 403)
+        if product.company_id and product.company_id != self.company:
+            raise ApiError("DATA_SCOPE_DENIED", "商品不属于当前企业。", 403)
+        if product.brew_item_type not in {"raw_material", "packaging_material", "semi_finished", "finished_product"}:
+            raise ApiError("VALIDATION_RELATION", "该商品类型不能登记为库存。", 422)
+        allowed_location_types = {
+            "raw_material": {"raw_material"},
+            "packaging_material": {"packaging"},
+            "semi_finished": {"semi_finished"},
+            "finished_product": {"finished"},
+        }
+        if location.brew_location_type not in allowed_location_types[product.brew_item_type]:
+            raise ApiError("VALIDATION_RELATION", "手工新建库存的库位类型与商品类型不匹配，请选择对应的库存库位。", 422)
+        if self.env["brew.tank"].sudo().search_count([("stock_location_id", "=", location.id)]):
+            raise ApiError("VALIDATION_RELATION", "糖化或发酵设备库位不能用于手工新建库存。", 422)
+        if product.tracking == "serial" and (quantity != int(quantity) or quantity != 1):
+            raise ApiError("VALIDATION_RANGE", "序列号管理商品每次只能登记 1 件。", 422)
+
+        lot = self.env["stock.lot"]
+        lot_name = str(payload.get("lot_name") or "").strip()
+        if product.tracking != "none":
+            if not lot_name:
+                raise ApiError("VALIDATION_REQUIRED", "该商品启用了批次管理，请填写批次号。", 422)
+            lot = lot.sudo().search(
+                [("name", "=", lot_name), ("product_id", "=", product.id), ("company_id", "=", self.company.id)],
+                limit=1,
+            )
+            if not lot:
+                lot_values = {
+                    "name": lot_name,
+                    "product_id": product.id,
+                    "company_id": self.company.id,
+                    "brew_quality_status": "qualified",
+                    "brew_source_model": "manual_inventory_entry",
+                }
+                if payload.get("supplier_lot"):
+                    lot_values["brew_supplier_lot"] = str(payload["supplier_lot"]).strip()
+                if payload.get("expiration_date"):
+                    lot_values["brew_expiration_date"] = payload["expiration_date"]
+                if packaging:
+                    lot_values.update(brew_manual_packaging_id=packaging.id, brew_manual_package_count=package_count)
+                lot = self.env["stock.lot"].sudo().create(lot_values)
+            else:
+                lot_values = {}
+                if lot.brew_source_model == "manual_inventory_entry" and lot.brew_quality_status == "pending":
+                    lot_values["brew_quality_status"] = "qualified"
+                supplier_lot = str(payload.get("supplier_lot") or "").strip()
+                if supplier_lot:
+                    if lot.brew_supplier_lot and lot.brew_supplier_lot != supplier_lot:
+                        raise ApiError("VALIDATION_RELATION", "该库存批次已关联其他供应商批次号。", 422)
+                    if not lot.brew_supplier_lot:
+                        lot_values["brew_supplier_lot"] = supplier_lot
+                if payload.get("expiration_date"):
+                    if lot.brew_expiration_date and lot.brew_expiration_date.isoformat() != payload["expiration_date"]:
+                        raise ApiError("VALIDATION_RELATION", "该库存批次已关联其他有效期。", 422)
+                    if not lot.brew_expiration_date:
+                        lot_values["brew_expiration_date"] = payload["expiration_date"]
+                if packaging:
+                    if lot.brew_manual_packaging_id and lot.brew_manual_packaging_id != packaging:
+                        raise ApiError("VALIDATION_RELATION", "该库存批次已关联其他包装规格。", 422)
+                    lot_values.update(
+                        brew_manual_packaging_id=packaging.id,
+                        brew_manual_package_count=lot.brew_manual_package_count + package_count,
+                    )
+                if lot_values:
+                    lot.write(lot_values)
+        else:
+            lot = self.env["stock.lot"]
+
+        # The API has already checked the caller's brew inventory permissions and
+        # factory scope above. Odoo's standard inventory adjustment additionally
+        # requires stock.group_stock_manager, which brewery managers do not have.
+        Quant = (
+            self.env["stock.quant"]
+            .with_user(SUPERUSER_ID)
+            .with_company(self.company)
+            .with_context(inventory_mode=True)
+        )
+        domain = [
+            ("product_id", "=", product.id),
+            ("location_id", "=", location.id),
+            ("lot_id", "=", lot.id or False),
+            ("package_id", "=", False),
+            ("owner_id", "=", False),
+        ]
+        quant = Quant.search(domain, limit=1)
+        target = (quant.quantity if quant else 0.0) + quantity
+        if quant:
+            quant.inventory_quantity = target
+        else:
+            quant = Quant.create({
+                "product_id": product.id,
+                "location_id": location.id,
+                "lot_id": lot.id or False,
+                "inventory_quantity": target,
+            })
+        quant.action_apply_inventory()
+        self.env["brew.production.plan"]._auto_dispatch_for_factory(factory)
+        return {
+            "product": product.display_name,
+            "factory": factory.name,
+            "location": location.complete_name,
+            "quantity_added": quantity,
+            "unit": product.uom_id.name,
+            "lot": lot.name if lot else None,
+            "package_count": package_count or None,
+            "packaging": packaging.name if packaging else None,
+            "volume_l": package_count * packaging.brew_volume_l if packaging else None,
+        }
 
     def _reservation_totals(
         self, location_ids=None, product_id=None, lot_id=None, excluded_source=None
@@ -213,7 +353,7 @@ class InventoryService:
                 values["frozen"] += max(quantity, 0)
             usable = (
                 quantity > 0
-                and quant.location_id.brew_location_type != "qc"
+                and quant.location_id.brew_location_type not in {"qc", "material_issue"}
                 and (not lot or lot.brew_quality_status == "qualified")
                 and (not lot or not lot.brew_frozen)
                 and (
@@ -304,7 +444,7 @@ class InventoryService:
             )
         usable_quants = quants.filtered(
             lambda quant: quant.quantity > 0
-            and quant.location_id.brew_location_type != "qc"
+            and quant.location_id.brew_location_type not in {"qc", "material_issue"}
         )
         available = sum(
             max(
@@ -330,7 +470,7 @@ class InventoryService:
             available_reason = "expired"
             available = 0
         elif on_hand > 0 and not usable_quants:
-            available_reason = "pending_location"
+            available_reason = "material_issue" if any(q.location_id.brew_location_type == "material_issue" for q in quants) else "pending_location"
             available = 0
         elif on_hand > 0 and available <= 0:
             available_reason = "fully_reserved"
@@ -348,6 +488,13 @@ class InventoryService:
             "id": str(lot.id),
             "name": lot.name,
             "supplier_lot": lot.brew_supplier_lot,
+            "manual_packaging": {
+                "id": str(lot.brew_manual_packaging_id.id),
+                "name": lot.brew_manual_packaging_id.name,
+                "count": lot.brew_manual_package_count,
+                "level": lot.brew_manual_packaging_id.brew_barcode_level,
+                "volume_l": lot.brew_manual_packaging_id.brew_volume_l,
+            } if lot.brew_manual_packaging_id else None,
             "product": {
                 "id": str(lot.product_id.id),
                 "name": lot.product_id.display_name,
@@ -590,12 +737,16 @@ class InventoryService:
         return plan
 
     def _candidate_stock(self, product, factory, lock=False, excluded_source=None):
+        if lock:
+            self.env["brew.inventory.count"]._lock_stock([self.company.id])
+        frozen = self.env["brew.inventory.count"]._frozen_locations(self.company.id)
         locations = self.env["stock.location"].sudo().search(
             [
                 ("company_id", "=", self.company.id),
                 ("usage", "=", "internal"),
                 ("brew_factory_id", "=", factory.id),
-                ("brew_location_type", "!=", "qc"),
+                ("brew_location_type", "not in", ["qc", "semi_finished", "material_issue"]),
+                ("id", "not in", frozen.ids),
             ]
         )
         if not locations:
@@ -698,8 +849,8 @@ class InventoryService:
             or self.user.has_group("craft_brew_core.group_brew_admin")
         ):
             raise ApiError("PERMISSION_DENIED", "当前账号无权为生产计划预占库存。", 403)
-        if plan.state in {"done", "cancelled", "terminated"}:
-            raise ApiError("STATE_PRECONDITION_FAILED", "当前计划状态不可检查或预占库存。", 422)
+        if plan.state not in {"draft", "checked", "stocking", "pending_approval", "approved"}:
+            raise ApiError("STATE_PRECONDITION_FAILED", "任务已下发或计划已关闭，不能重新核对或预占库存。", 422)
         existing = self.env["brew.inventory.reservation"].sudo().search(
             [
                 ("company_id", "=", self.company.id),
@@ -810,6 +961,8 @@ class InventoryService:
 
     @staticmethod
     def _version(record):
+        if record._name == "brew.inventory.count":
+            return record.revision_token
         return record.write_date.isoformat() if record.write_date else None
 
     def _check_version(self, record, expected):
@@ -933,158 +1086,6 @@ class InventoryService:
         self._check_version(record, version)
         record.action_confirm()
         return record, self._serialize_transfer(record)
-
-    def _serialize_count(self, record):
-        return {
-            "id": str(record.id),
-            "name": record.name,
-            "state": record.state,
-            "created_at": record.create_date.isoformat() if record.create_date else None,
-            "updated_at": record.write_date.isoformat() if record.write_date else None,
-            "factory": (
-                {"id": str(record.factory_id.id), "name": record.factory_id.name}
-                if record.factory_id
-                else None
-            ),
-            "location": {
-                "id": str(record.location_id.id),
-                "name": record.location_id.complete_name,
-            },
-            "approval_instance_id": (
-                str(record.approval_instance_id.id)
-                if record.approval_instance_id
-                else None
-            ),
-            "lines": [
-                {
-                    "id": str(line.id),
-                    "location": {
-                        "id": str(line.location_id.id),
-                        "name": line.location_id.complete_name,
-                    },
-                    "product": {
-                        "id": str(line.product_id.id),
-                        "name": line.product_id.display_name,
-                    },
-                    "lot": (
-                        {"id": str(line.lot_id.id), "name": line.lot_id.name}
-                        if line.lot_id
-                        else None
-                    ),
-                    "theoretical_qty": line.theoretical_qty,
-                    "counted_qty": line.counted_qty,
-                    "difference_qty": line.difference_qty,
-                    "difference_reason": line.difference_reason,
-                    "difference_note": line.difference_note,
-                    "previous_count": (
-                        {
-                            "name": line.previous_count_line_id.count_id.name,
-                            "counted_qty": line.previous_count_line_id.counted_qty,
-                            "counted_at": (
-                                line.previous_count_line_id.count_id.write_date.isoformat()
-                                if line.previous_count_line_id.count_id.write_date
-                                else None
-                            ),
-                        }
-                        if line.previous_count_line_id
-                        else None
-                    ),
-                    "uom": {"id": str(line.uom_id.id), "name": line.uom_id.name},
-                }
-                for line in record.line_ids
-            ],
-            "version": self._version(record),
-        }
-
-    def counts(self, page, page_size, state=None):
-        location_ids = self.env["stock.location"].sudo().search(
-            self._location_domain()
-        ).ids
-        domain = [
-            ("company_id", "=", self.company.id),
-            ("location_id", "in", location_ids),
-        ]
-        if state:
-            domain.append(("state", "=", state))
-        model = self.env["brew.inventory.count"].sudo()
-        total = model.search_count(domain)
-        records = model.search(
-            domain,
-            offset=(page - 1) * page_size,
-            limit=page_size,
-            order="create_date desc,id desc",
-        )
-        return [self._serialize_count(record) for record in records], total
-
-    def create_count(self, payload):
-        self._require_manage()
-        location = self._location(payload.get("location_id"))
-        if not location.brew_factory_id:
-            raise ApiError("VALIDATION_RELATION", "盘点库位必须归属厂区。", 422)
-        record = self.env["brew.inventory.count"].sudo().create(
-            {"company_id": self.company.id, "location_id": location.id}
-        )
-        return record, self._serialize_count(record)
-
-    def count_action(self, document_id, action, payload):
-        self._require_manage()
-        record = self._document("brew.inventory.count", document_id)
-        self._check_version(record, payload.get("version"))
-        if action == "start":
-            record.action_start()
-        elif action == "submit":
-            record.action_submit(self.user)
-        elif action == "confirm":
-            record.action_confirm()
-        else:
-            raise ApiError("RESOURCE_NOT_FOUND", "盘点动作不存在。", 404)
-        return record, self._serialize_count(record)
-
-    def update_count_lines(self, document_id, payload):
-        self._require_manage()
-        record = self._document("brew.inventory.count", document_id)
-        self._check_version(record, payload.get("version"))
-        if record.state != "counting":
-            raise ApiError("STATE_PRECONDITION_FAILED", "只有盘点中单据可录入实数。", 422)
-        incoming = payload.get("lines")
-        if not isinstance(incoming, list) or not incoming:
-            raise ApiError("VALIDATION_REQUIRED", "盘点实数不能为空。", 422)
-        by_id = {line.id: line for line in record.line_ids}
-        seen = set()
-        for values in incoming:
-            line_id = int(values.get("id") or 0)
-            line = by_id.get(line_id)
-            if not line or line_id in seen:
-                raise ApiError("VALIDATION_RELATION", "盘点明细不存在或重复。", 422)
-            counted = float(values.get("counted_qty"))
-            if counted < 0:
-                raise ApiError("VALIDATION_RANGE", "盘点实数不能小于零。", 422)
-            has_difference = abs(counted - line.theoretical_qty) > 0.000001
-            reason = values.get("difference_reason") or False
-            note = str(values.get("difference_note") or "").strip() or False
-            if has_difference and not reason:
-                raise ApiError(
-                    "VALIDATION_REQUIRED",
-                    f"{line.product_id.display_name} 存在盘点差异，请选择差异原因。",
-                    422,
-                )
-            if has_difference and reason == "other" and not note:
-                raise ApiError(
-                    "VALIDATION_REQUIRED",
-                    f"{line.product_id.display_name} 的差异原因为其他，请填写差异说明。",
-                    422,
-                )
-            line.write(
-                {
-                    "counted_qty": counted,
-                    "difference_reason": reason if has_difference else False,
-                    "difference_note": note if has_difference else False,
-                }
-            )
-            seen.add(line_id)
-        if seen != set(by_id):
-            raise ApiError("VALIDATION_REQUIRED", "必须提交全部盘点明细。", 422)
-        return record, self._serialize_count(record)
 
     def _serialize_scrap(self, record):
         return {

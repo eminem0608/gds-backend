@@ -12,6 +12,21 @@ class DemandController(BrewApiController):
             self._validate_cookie_csrf(auth_mode)
         return user, company, DemandService(request.env, user, company)
 
+    @http.route("/api/v1/demand-customers", type="http", auth="public", methods=["POST"], csrf=False)
+    def create_demand_customer(self):
+        request_id = self._request_id()
+        try:
+            user, company, service = self._demand_context(True)
+            payload = self._json_body()
+            idem, replay = self._start_idempotency(user, company, payload)
+            if replay:
+                return replay
+            customer, data = service.create_customer(payload)
+            self._audit("customer", "create", request_id, user=user, company=company, summary={"id": customer.id})
+            return self._complete_idempotency(idem, data, 201)
+        except Exception as exc:
+            return self._error_response(exc, request_id)
+
     @http.route("/api/v1/demands", type="http", auth="public", methods=["GET", "POST"], csrf=False)
     def demands(self):
         request_id = self._request_id()
@@ -61,7 +76,7 @@ class DemandController(BrewApiController):
     def demand_action(self, demand_id, action):
         request_id = self._request_id()
         try:
-            if action not in {"submit", "confirm", "return", "cancel"}:
+            if action not in {"submit", "confirm", "return", "cancel", "delete"}:
                 raise ApiError("RESOURCE_NOT_FOUND", "产品需求动作不存在。", 404)
             payload = self._json_body()
             user, company, service = self._demand_context(True)

@@ -13,15 +13,18 @@ class RecipeService:
         self.company = company
 
     def ensure_manage(self):
-        if not self.user.has_group("craft_brew_core.group_brew_brewer"):
-            raise ApiError("PERMISSION_DENIED", "只有酿酒师可以新增或修改配方工艺。", 403)
+        if not (
+            self.user.has_group("craft_brew_core.group_brew_brewer")
+            or self.user.has_group("craft_brew_core.group_brew_admin")
+        ):
+            raise ApiError("PERMISSION_DENIED", "只有酿酒师或系统管理员可以新增或修改配方工艺。", 403)
 
     def ensure_review(self):
         if not (
             self.user.has_group("craft_brew_core.group_brew_production_director")
             or self.user.has_group("craft_brew_core.group_brew_admin")
         ):
-            raise ApiError("PERMISSION_DENIED", "当前账号无权审核或启用配方工艺。", 403)
+            raise ApiError("PERMISSION_DENIED", "当前账号无权审核配方工艺。", 403)
 
     def _recipe(self, recipe_id, include_archived=True):
         recipe = self.env["brew.recipe"].sudo().with_context(active_test=not include_archived).search(
@@ -29,7 +32,12 @@ class RecipeService:
         )
         if not recipe:
             raise ApiError("RESOURCE_NOT_FOUND", "配方不存在。", 404)
+        self._ensure_factory_scope(recipe.equipment_id.brew_factory_id)
         return recipe
+
+    def _ensure_factory_scope(self, factory):
+        if factory and factory not in self.user.brew_allowed_factories(self.company):
+            raise ApiError("DATA_SCOPE_DENIED", "工艺不属于当前厂区范围。", 403)
 
     def _version(self, version_id):
         version = self.env["brew.recipe.version"].sudo().search(
@@ -37,6 +45,7 @@ class RecipeService:
         )
         if not version:
             raise ApiError("RESOURCE_NOT_FOUND", "配方版本不存在。", 404)
+        self._ensure_factory_scope(version.recipe_id.equipment_id.brew_factory_id)
         return version
 
     def _check_version(self, record, expected):
@@ -298,7 +307,7 @@ class RecipeService:
 
     def list_recipes(self, page, page_size, keyword="", active=None):
         model = self.env["brew.recipe"].sudo().with_context(active_test=False)
-        domain = [("company_id", "=", self.company.id)]
+        domain = [("company_id", "=", self.company.id), ("equipment_id.brew_factory_id", "in", self.user.brew_allowed_factories(self.company).ids)]
         if keyword:
             domain += ["|", ("code", "ilike", keyword), ("name", "ilike", keyword)]
         if active is not None:
@@ -323,13 +332,17 @@ class RecipeService:
         )
         if not equipment:
             raise ApiError("VALIDATION_REQUIRED", "请选择当前企业中有效的酿造系统。", 422)
+        self._ensure_factory_scope(equipment.brew_factory_id)
+        recipe_model = self.env["brew.recipe"].sudo().with_context(active_test=False)
         if not code:
             prefix = "".join(ch for ch in product.name if ch.isalnum())[:3].upper() or "BEER"
             code = f"{prefix}-{product.id}-{equipment.id}-1"
             suffix = 1
-            while self.env["brew.recipe"].sudo().search_count([("company_id", "=", self.company.id), ("code", "=", code)]):
+            while recipe_model.search_count([("company_id", "=", self.company.id), ("code", "=", code)]):
                 suffix += 1
                 code = f"{prefix}-{product.id}-{equipment.id}-{suffix}"
+        elif recipe_model.search_count([("company_id", "=", self.company.id), ("code", "=", code)]):
+            raise ApiError("VALIDATION_DUPLICATE", "配方编码已存在（包括已归档配方），请使用其他编码。", 409)
         category_id = product.brew_beer_category_id.id
         subcategory_id = product.brew_beer_subcategory_id.id
         category_model = self.env["brew.beer.category"].sudo()
@@ -338,7 +351,7 @@ class RecipeService:
         if not category or not subcategory or subcategory.parent_id != category:
             raise ApiError("VALIDATION_REQUIRED", "请先在啤酒产品中维护有效的大类和对应小类。", 422)
         recipe = self.env["brew.recipe"].sudo().create(
-            {"name": product.name, "code": code, "company_id": self.company.id, "product_tmpl_id": product.id, "equipment_id": equipment.id, "beer_style": payload.get("beer_style"), "beer_category_id": category.id, "beer_subcategory_id": subcategory.id, "description": payload.get("description")}
+            {"name": str(payload.get("name") or "").strip() or product.name, "code": code, "company_id": self.company.id, "product_tmpl_id": product.id, "equipment_id": equipment.id, "beer_style": payload.get("beer_style"), "beer_category_id": category.id, "beer_subcategory_id": subcategory.id, "description": payload.get("description")}
         )
         data = self.serialize_recipe(recipe)
         if "initial_version" in payload:
@@ -361,6 +374,16 @@ class RecipeService:
         recipe.write(values)
         return recipe, self.serialize_recipe(recipe)
 
+    def delete_recipe(self, recipe_id, payload):
+        self.ensure_manage()
+        recipe = self._recipe(recipe_id)
+        self._check_version(recipe, payload.get("version"))
+        if any(version.state != "draft" for version in recipe.version_ids):
+            raise ApiError("VALIDATION_STATE", "只有所有版本均为草稿的配方工艺可以删除。", 409)
+        if self.env["brew.production.plan"].sudo().search_count([("recipe_version_id", "in", recipe.version_ids.ids)]):
+            raise ApiError("VALIDATION_STATE", "已关联生产计划的配方工艺不能删除。", 409)
+        recipe.unlink()
+
     def list_versions(self, recipe_id):
         recipe = self._recipe(recipe_id)
         return [self.serialize_version(item) for item in recipe.version_ids.sorted(lambda item: (-item.version, item.id))]
@@ -371,12 +394,7 @@ class RecipeService:
             ("company_id", "=", self.company.id),
             ("recipe_version_id.recipe_id", "=", recipe.id),
         ]
-        if not (
-            self.user.has_group("craft_brew_core.group_brew_general_manager")
-            or self.user.has_group("craft_brew_core.group_brew_admin")
-            or self.user.has_group("craft_brew_core.group_brew_brewer")
-        ):
-            domain.append(("factory_id", "in", self.user.brew_factory_ids.ids))
+        domain.append(("factory_id", "in", self.user.brew_allowed_factories(self.company).ids))
         model = self.env["brew.production.batch"].sudo()
         records = model.search(domain, order="create_date desc,id desc")
         rows = []
@@ -414,12 +432,7 @@ class RecipeService:
             ("recipe_version_id.recipe_id", "=", recipe.id),
             ("production_design_json", "not in", [False, "", "{}"]),
         ]
-        if not (
-            self.user.has_group("craft_brew_core.group_brew_general_manager")
-            or self.user.has_group("craft_brew_core.group_brew_admin")
-            or self.user.has_group("craft_brew_core.group_brew_brewer")
-        ):
-            plan_domain.append(("factory_id", "in", self.user.brew_factory_ids.ids))
+        plan_domain.append(("factory_id", "in", self.user.brew_allowed_factories(self.company).ids))
         plans = self.env["brew.production.plan"].sudo().search(plan_domain, order="create_date desc,id desc")
         for plan in plans:
             if plan.id in batched_plan_ids:
@@ -456,7 +469,7 @@ class RecipeService:
         if int(design.get("brew_equipment_id") or 0) != recipe.equipment_id.id:
             raise ApiError("VALIDATION_RELATION", "配方版本必须使用该啤酒配方关联的酿造系统。", 422)
         next_version = max(recipe.version_ids.mapped("version") or [0]) + 1
-        detail_values = design_values(self.env, self.company, design, payload.get("base_volume_l") or 1000)
+        detail_values = design_values(self.env, self.company, design, payload.get("base_volume_l") or 1000, self.user, recipe.product_tmpl_id.id)
         version = self.env["brew.recipe.version"].sudo().create(
             {
                 "recipe_id": recipe.id,
@@ -484,7 +497,7 @@ class RecipeService:
             if int(design.get("brew_equipment_id") or 0) != version.recipe_id.equipment_id.id:
                 raise ApiError("VALIDATION_RELATION", "配方版本必须使用该啤酒配方关联的酿造系统。", 422)
             values["design_json"] = json.dumps(design, ensure_ascii=False, sort_keys=True)
-            values.update(design_values(self.env, self.company, design, payload.get("base_volume_l", version.base_volume_l)))
+            values.update(design_values(self.env, self.company, design, payload.get("base_volume_l", version.base_volume_l), self.user, version.recipe_id.product_tmpl_id.id))
         if not values:
             raise ApiError("VALIDATION_REQUIRED", "没有可更新的字段。", 422)
         version.write(values)
@@ -560,10 +573,6 @@ class RecipeService:
             version.action_return(reason, user=self.user)
             self._complete_recipe_review_tasks(version, f"退回修改：{reason}")
             self._create_recipe_revision_task(version)
-        elif action == "activate":
-            version.action_activate(self.user)
-        elif action == "deactivate":
-            version.action_deactivate(self.user)
         else:
             raise ApiError("RESOURCE_NOT_FOUND", "配方版本动作不存在。", 404)
         return version, self.serialize_version(version, True)
